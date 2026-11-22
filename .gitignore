@@ -1,0 +1,19 @@
+# Build trees
+/build*/
+/out/
+/cmake-build-*/
+
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.user
+*.xcworkspace/
+xcuserdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Validator binaries downloaded locally / in CI
+/tools/bin/

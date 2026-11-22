@@ -1,0 +1,212 @@
+name: Build & Validate
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_TYPE: Release
+  PLUGINVAL_VERSION: v1.0.4
+  CLAP_VALIDATOR_VERSION: "0.3.2"
+  ART: build/NovaPitch_artefacts/Release
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Windows x64 — primary target: FL Studio for Windows (VST3 + CLAP)
+  # ---------------------------------------------------------------------------
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Download validators
+        shell: bash
+        run: |
+          mkdir -p tools/bin && cd tools/bin
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_Windows.zip"
+          unzip -oq pluginval.zip
+          curl -sSL -o clapval.zip "https://github.com/free-audio/clap-validator/releases/download/${CLAP_VALIDATOR_VERSION}/clap-validator-${CLAP_VALIDATOR_VERSION}-windows.zip"
+          unzip -oq clapval.zip
+          find . -maxdepth 3 -name '*.exe'
+
+      - name: pluginval (VST3, strictness 10)
+        shell: bash
+        run: |
+          ./tools/bin/pluginval.exe --strictness-level 10 --validate-in-process --verbose \
+            --output-dir pluginval-logs --validate "$ART/VST3/NovaPitch.vst3"
+
+      - name: clap-validator
+        shell: bash
+        run: |
+          CLAPVAL=$(find tools/bin -name 'clap-validator.exe' | head -1)
+          "$CLAPVAL" validate "$ART/CLAP/NovaPitch.clap"
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaPitch-Windows-x64
+          path: |
+            ${{ env.ART }}/VST3/NovaPitch.vst3
+            ${{ env.ART }}/CLAP/NovaPitch.clap
+            ${{ env.ART }}/Standalone/NovaPitch.exe
+            tools/install_plugins.ps1
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # macOS Universal (arm64 + x86_64) — FL Studio for Mac (VST3 + AU + CLAP),
+  # native on Apple Silicon and on Intel / Rosetta.
+  # ---------------------------------------------------------------------------
+  macos:
+    name: macOS Universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel "$(sysctl -n hw.ncpu)"
+
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Verify Universal Binary
+        run: |
+          for bin in \
+            "$ART/VST3/NovaPitch.vst3/Contents/MacOS/NovaPitch" \
+            "$ART/AU/NovaPitch.component/Contents/MacOS/NovaPitch" \
+            "$ART/CLAP/NovaPitch.clap/Contents/MacOS/NovaPitch"; do
+            archs=$(lipo -archs "$bin")
+            echo "$bin: $archs"
+            [[ "$archs" == *arm64* && "$archs" == *x86_64* ]] || { echo "Not universal!"; exit 1; }
+          done
+
+      - name: Ad-hoc code sign
+        run: |
+          for b in "$ART/VST3/NovaPitch.vst3" "$ART/AU/NovaPitch.component" "$ART/CLAP/NovaPitch.clap" "$ART/Standalone/NovaPitch.app"; do
+            codesign --force --deep --sign - "$b"
+            codesign --verify --verbose "$b"
+          done
+
+      - name: Download validators
+        run: |
+          mkdir -p tools/bin && cd tools/bin
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip"
+          unzip -oq pluginval.zip
+          curl -sSL "https://github.com/free-audio/clap-validator/releases/download/${CLAP_VALIDATOR_VERSION}/clap-validator-${CLAP_VALIDATOR_VERSION}-macos-universal.tar.gz" | tar xz
+          find . -maxdepth 4 -type f \( -name pluginval -o -name clap-validator \)
+
+      - name: auval (AU)
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "$ART/AU/NovaPitch.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          sleep 2
+          auval -a | grep -i novapitch || true
+          auval -strict -v aumf Npc1 Nvpt
+
+      - name: pluginval (VST3 + AU, strictness 10)
+        run: |
+          PV=tools/bin/pluginval.app/Contents/MacOS/pluginval
+          $PV --strictness-level 10 --validate-in-process --verbose --output-dir pluginval-logs \
+            --validate "$ART/VST3/NovaPitch.vst3"
+          $PV --strictness-level 10 --validate-in-process --verbose --output-dir pluginval-logs \
+            --validate ~/Library/Audio/Plug-Ins/Components/NovaPitch.component
+
+      - name: clap-validator
+        run: |
+          CLAPVAL=$(find tools/bin -type f -name clap-validator | head -1)
+          "$CLAPVAL" validate "$ART/CLAP/NovaPitch.clap"
+
+      - name: Package (keeps bundle permissions and signatures)
+        run: |
+          mkdir -p dist/NovaPitch-macOS-Universal
+          cp -R "$ART/VST3/NovaPitch.vst3" "$ART/AU/NovaPitch.component" \
+                "$ART/CLAP/NovaPitch.clap" "$ART/Standalone/NovaPitch.app" \
+                tools/install_plugins.sh dist/NovaPitch-macOS-Universal/
+          ditto -c -k --keepParent dist/NovaPitch-macOS-Universal dist/NovaPitch-macOS-Universal.zip
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaPitch-macOS-Universal
+          path: dist/NovaPitch-macOS-Universal.zip
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Linux x64 — optional target, cheap early warning for build/test breakage.
+  # ---------------------------------------------------------------------------
+  linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libx11-dev libxrandr-dev libxcursor-dev \
+            libxinerama-dev libxext-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev xvfb
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Download validators
+        run: |
+          mkdir -p tools/bin && cd tools/bin
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_Linux.zip"
+          unzip -oq pluginval.zip
+          curl -sSL "https://github.com/free-audio/clap-validator/releases/download/${CLAP_VALIDATOR_VERSION}/clap-validator-${CLAP_VALIDATOR_VERSION}-ubuntu-18.04.tar.gz" | tar xz
+
+      - name: pluginval (VST3, strictness 10)
+        run: |
+          xvfb-run -a ./tools/bin/pluginval --strictness-level 10 --validate-in-process --verbose \
+            --output-dir pluginval-logs --validate "$ART/VST3/NovaPitch.vst3"
+
+      - name: clap-validator
+        run: |
+          CLAPVAL=$(find tools/bin -type f -name clap-validator | head -1)
+          xvfb-run -a "$CLAPVAL" validate "$ART/CLAP/NovaPitch.clap"
+
+      - name: Package
+        run: |
+          mkdir -p dist/NovaPitch-Linux-x64
+          cp -R "$ART/VST3/NovaPitch.vst3" "$ART/CLAP/NovaPitch.clap" "$ART/Standalone/NovaPitch" \
+                tools/install_plugins.sh dist/NovaPitch-Linux-x64/
+          tar -C dist -czf dist/NovaPitch-Linux-x64.tar.gz NovaPitch-Linux-x64
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaPitch-Linux-x64
+          path: dist/NovaPitch-Linux-x64.tar.gz
+          if-no-files-found: error
