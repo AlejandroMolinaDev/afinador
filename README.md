@@ -21,7 +21,7 @@ FL Studio carga VST3 y CLAP (Windows y Mac) y AU (Mac). FL Studio **no** soporta
 ## Requisitos para compilar
 
 **Windows**
-- Visual Studio 2022 con la carga de trabajo *Desarrollo para el escritorio con C++*
+- Visual Studio 2022 o posterior con la carga de trabajo *Desarrollo para el escritorio con C++* (CMake usa automáticamente la versión más nueva instalada)
 - CMake ≥ 3.25 y Git
 
 **macOS**
@@ -40,7 +40,7 @@ cd afinador
 
 **Windows** (PowerShell o "Developer Command Prompt"):
 ```bash
-cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake -B build -A x64
 cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
