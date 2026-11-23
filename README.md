@@ -4,9 +4,9 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-![NovaPitch — Fase 6](docs/img/fase6-editor.png)
+![NovaPitch — Fase 7](docs/img/fase7-armonias.png)
 
-**Estado:** Fase 6 — corrección automática en tiempo real (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición ±12, mezcla) con 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato natural/artificial, presets de fábrica y de usuario, MIDI Learn y color de acento. Siguiente: armonías y MIDI (Fase 7). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 7 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, **4 voces de armonía** (diatónicas, semitonos o acordes MIDI) con bus propio, **MIDI Target** y **aprender escala por MIDI**. Siguiente: modo gráfico (Fase 8). Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|
@@ -92,6 +92,11 @@ Checklist completo de pruebas manuales: [`docs/TESTING_FL.md`](docs/TESTING_FL.m
 - **Presets**: selector en la cabecera (`<` `>` para recorrerlos, **Guardar** para crear uno de usuario). Los presets cambian el sonido, nunca la tonalidad, la escala, las notas ni la referencia A4. Los de usuario se guardan en `Documentos/NovaPitch/Presets` (archivos `.novapreset`, se pueden copiar entre equipos).
 - **MIDI Learn**: clic derecho sobre cualquier knob → *Asignar a controlador MIDI (aprender)* y mueve un control de tu teclado/controlador. Funciona en CLAP, AU y Standalone. En **VST3 dentro de FL Studio** usa *Link to controller* de FL (FL no envía CC a efectos VST3).
 - **Color de acento**: botón `···` de la cabecera.
+
+## Armonías y MIDI en FL Studio
+- Pestaña **Armonías**: 4 voces; modo *Diatónica* (intervalo en la escala: 3ª arriba, 6ª abajo...), *Semitonos* o *MIDI* (cada voz canta una nota del acorde que tocas). Formante, panorama, nivel, humanizar, mute/solo por voz. Pestaña **Bus**: EQ, gate, ataque/liberación y ancho de todas las armonías.
+- Pestaña **MIDI**: *nota objetivo* (la nota que tocas es la nota corregida) y *aprender escala*.
+- Para enviar MIDI a NovaPitch en FL: ventana del plugin → ⚙ → *MIDI* → *Input port* = 1; luego un canal *MIDI Out* con *Port* = 1 y escribe las notas en su Piano roll.
 
 ## Probar sin DAW: render offline
 `NovaPitchRender` procesa un WAV/AIFF/FLAC con los parámetros que quieras y compensa la latencia, para comparar antes/después con tus propias tomas:

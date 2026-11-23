@@ -12,6 +12,11 @@ juce::String ParamIDs::noteState (int pitchClass)
     return "noteState" + juce::String (pitchClass);
 }
 
+juce::String ParamIDs::harmonyVoice (const char* field, int voice)
+{
+    return juce::String (field) + juce::String (voice);
+}
+
 namespace
 {
 juce::String u8 (const char* text) { return juce::String::fromUTF8 (text); }
@@ -82,7 +87,13 @@ std::unique_ptr<juce::AudioParameterFloat> makeFloat (const char* id, const char
         juce::ParameterID { id, 1 }, u8 (name), range, def,
         juce::AudioParameterFloatAttributes()
             .withLabel (u8 (unit))
-            .withStringFromValueFunction ([toText] (float v, int) { return toText (v); }));
+            .withStringFromValueFunction ([toText] (float v, int) { return toText (v); })
+            .withValueFromStringFunction ([] (const juce::String& t) {
+                // Accepts what toText produces ("8.0 kHz", "+3.5 dB", "40 %"...) and plain numbers.
+                const auto number = t.trim().replaceCharacter (',', '.').retainCharacters ("0123456789.+-");
+                const float v = number.getFloatValue();
+                return t.containsIgnoreCase ("khz") ? v * 1000.0f : v;
+            }));
 }
 } // namespace
 
@@ -156,6 +167,102 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (makeFloat (ParamIDs::vibVariation, u8 ("Vibrato: variación").toRawUTF8(), 0.0f, 100.0f, 0.1f, 20.0f, "%", percent));
     layout.add (makeFloat (ParamIDs::vibAmpMod, "Vibrato: amplitud", 0.0f, 100.0f, 0.1f, 0.0f, "%", percent));
     layout.add (makeFloat (ParamIDs::vibFormantMod, "Vibrato: formante", 0.0f, 100.0f, 0.1f, 0.0f, "%", percent));
+
+    // ---- Phase 7 ------------------------------------------------------------
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::midiTarget, 1 }, u8 ("MIDI: nota objetivo"), false));
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::midiScaleLearn, 1 }, u8 ("MIDI: aprender escala"), false));
+
+    auto degreeText = [] (int d) {
+        if (d == 0)
+            return u8 ("unísono");
+        return juce::String (std::abs (d) + 1) + u8 ("ª ") + (d > 0 ? u8 ("arriba") : u8 ("abajo"));
+    };
+    struct VoiceDefaults { int degrees; int semitones; float pan; };
+    const VoiceDefaults defaults[] = { { 2, 4, -40.0f }, { -2, -3, 40.0f }, { 4, 7, -70.0f }, { 7, 12, 70.0f } };
+
+    for (int v = 1; v <= 4; ++v)
+    {
+        const auto& d = defaults[v - 1];
+        const auto prefix = u8 ("Voz ") + juce::String (v) + ": ";
+        auto id = [v] (const char* field) { return ParamIDs::harmonyVoice (field, v); };
+
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { id ("hvMode"), 1 }, prefix + u8 ("modo"),
+            juce::StringArray { u8 ("Apagada"), u8 ("Diatónica"), u8 ("Semitonos"), "MIDI" }, 0,
+            juce::AudioParameterChoiceAttributes().withValueFromStringFunction ([] (const juce::String& t) {
+                const juce::StringArray items { "Apagada", "Diatonica", "Semitonos", "MIDI" };
+                for (int i = 0; i < items.size(); ++i)
+                    if (t.startsWithIgnoreCase (items[i].substring (0, 4)))
+                        return i;
+                return juce::jlimit (0, 3, t.getIntValue());
+            })));
+        layout.add (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { id ("hvDegrees"), 1 }, prefix + u8 ("intervalo"), -14, 14, d.degrees,
+            juce::AudioParameterIntAttributes()
+                .withStringFromValueFunction ([degreeText] (int x, int) { return degreeText (x); })
+                .withValueFromStringFunction ([] (const juce::String& t) {
+                    // "3ª arriba" -> +2, "6ª abajo" -> -5, "unísono" -> 0, plain numbers as degrees
+                    const auto digits = t.retainCharacters ("0123456789");
+                    if (digits.isEmpty())
+                        return 0;
+                    if (t.containsIgnoreCase ("arriba") || t.containsIgnoreCase ("abajo"))
+                        return (digits.getIntValue() - 1) * (t.containsIgnoreCase ("abajo") ? -1 : 1);
+                    return t.trim().getIntValue();
+                })));
+        layout.add (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { id ("hvSemitones"), 1 }, prefix + u8 ("semitonos"), -24, 24, d.semitones,
+            juce::AudioParameterIntAttributes().withLabel ("st").withStringFromValueFunction ([] (int x, int) {
+                return (x > 0 ? "+" : "") + juce::String (x) + " st";
+            })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id ("hvFormant"), 1 }, prefix + u8 ("formante"), juce::NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f,
+            juce::AudioParameterFloatAttributes().withLabel ("st").withStringFromValueFunction ([] (float x, int) {
+                return (x > 0.05f ? "+" : "") + juce::String (x, 1) + " st";
+            })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id ("hvPan"), 1 }, prefix + u8 ("panorama"), juce::NormalisableRange<float> (-100.0f, 100.0f, 1.0f), d.pan,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float x, int) {
+                    const int p = juce::roundToInt (x);
+                    return p == 0 ? juce::String ("C") : (p < 0 ? "L" + juce::String (-p) : "R" + juce::String (p));
+                })
+                .withValueFromStringFunction ([] (const juce::String& t) {
+                    const auto txt = t.trim();
+                    const float amount = txt.retainCharacters ("0123456789.").getFloatValue();
+                    if (txt.startsWithIgnoreCase ("L"))
+                        return -amount;
+                    if (txt.startsWithIgnoreCase ("R"))
+                        return amount;
+                    return txt.getFloatValue(); // "C" -> 0, or a signed number
+                })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id ("hvLevel"), 1 }, prefix + u8 ("nivel"), juce::NormalisableRange<float> (-60.0f, 6.0f, 0.1f), -6.0f,
+            juce::AudioParameterFloatAttributes().withLabel ("dB").withStringFromValueFunction ([] (float x, int) {
+                return juce::String (x, 1) + " dB";
+            })));
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id ("hvHumanize"), 1 }, prefix + u8 ("humanizar"), juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 20.0f,
+            juce::AudioParameterFloatAttributes().withLabel ("%").withStringFromValueFunction ([] (float x, int) {
+                return juce::String (juce::roundToInt (x)) + " %";
+            })));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id ("hvMute"), 1 }, prefix + "mute", false));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id ("hvSolo"), 1 }, prefix + "solo", false));
+    }
+
+    auto hz = [] (float v) { return v >= 1000.0f ? juce::String (v / 1000.0f, 1) + " kHz" : juce::String (juce::roundToInt (v)) + " Hz"; };
+    auto ms = [] (float v) { return juce::String (juce::roundToInt (v)) + " ms"; };
+    auto db = [] (float v) { return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB"; };
+    layout.add (makeFloat (ParamIDs::hBusHpf, "Armonías: paso-alto", 20.0f, 1000.0f, 1.0f, 120.0f, "Hz", hz, 150.0f));
+    layout.add (makeFloat (ParamIDs::hBusLpf, "Armonías: paso-bajo", 1000.0f, 20000.0f, 1.0f, 12000.0f, "Hz", hz, 6000.0f));
+    layout.add (makeFloat (ParamIDs::hBusEqFreq, "Armonías: EQ frecuencia", 200.0f, 8000.0f, 1.0f, 2500.0f, "Hz", hz, 1500.0f));
+    layout.add (makeFloat (ParamIDs::hBusEqGain, "Armonías: EQ ganancia", -12.0f, 12.0f, 0.1f, 0.0f, "dB", db));
+    layout.add (makeFloat (ParamIDs::hBusAttack, "Armonías: ataque", 1.0f, 500.0f, 1.0f, 30.0f, "ms", ms, 60.0f));
+    layout.add (makeFloat (ParamIDs::hBusRelease, "Armonías: liberación", 10.0f, 2000.0f, 1.0f, 200.0f, "ms", ms, 300.0f));
+    layout.add (makeFloat (ParamIDs::hBusGate, "Armonías: gate", -80.0f, -20.0f, 0.1f, -60.0f, "dB", db));
+    layout.add (makeFloat (ParamIDs::hBusWidth, "Armonías: ancho", 0.0f, 200.0f, 0.1f, 100.0f, "%",
+                           [] (float v) { return juce::String (juce::roundToInt (v)) + " %"; }));
 
     return layout;
 }

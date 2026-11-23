@@ -47,7 +47,8 @@ private:
         PluginEditor& owner;
     };
 
-    enum class Page { Correction = 0, Formants = 1, Vibrato = 2 };
+    enum class Page { Correction = 0, Formants = 1, Vibrato = 2, Harmony = 3, HarmonyBus = 4, Midi = 5 };
+    static constexpr int kNumPages = 6;
 
     void timerCallback() override;
     juce::String buildFooterText() const;
@@ -80,8 +81,25 @@ private:
     VibratoDisplay vibratoDisplay;
 
     // Tabs: each page is a transparent container placed over the page panel.
-    std::array<juce::TextButton, 3> tabs;
-    std::array<juce::Component, 3> pages;
+    std::array<juce::TextButton, kNumPages> tabs;
+    std::array<juce::Component, kNumPages> pages;
+
+    // Harmony page: voice selector + one panel per voice (only the selected is visible)
+    struct VoicePanel
+    {
+        juce::Component panel;
+        std::unique_ptr<LabeledCombo> mode;
+        std::unique_ptr<LabeledKnob> degrees, semitones, formant, pan, level, humanize;
+        std::unique_ptr<LabeledToggle> mute, solo;
+    };
+    std::array<VoicePanel, 4> voicePanels;
+    std::array<juce::TextButton, 4> voiceButtons;
+    int selectedVoice = 0;
+    void selectVoice (int);
+    void updateVoiceVisibility();
+    std::vector<std::unique_ptr<LabeledKnob>> busKnobs;
+    std::vector<std::unique_ptr<LabeledToggle>> midiToggles;
+    juce::String heldNotesText;
     Page currentPage = Page::Correction;
 
     // Preset bar (header)

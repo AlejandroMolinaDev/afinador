@@ -3,7 +3,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "dsp/CorrectionCurve.h"
+#include "dsp/HarmonyEngine.h"
 #include "dsp/HqShifter.h"
+#include "dsp/MidiNoteState.h"
 #include "dsp/NoteMapper.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/PsolaShifter.h"
@@ -117,6 +119,11 @@ public:
 
     PresetManager& getPresetManager() noexcept { return *presetManager; }
     MidiLearn& getMidiLearn() noexcept { return midiLearn; }
+    const dsp::MidiNoteState& getMidiNotes() const noexcept { return midiNotes; }
+
+    /** Writes the pitch classes played while "learn scale" is on into the scale
+        and note-state parameters (message thread; called by the timer). */
+    void applyLearnedScale();
 
     /** Incremented (message thread) whenever MIDI mappings change: lets the editor refresh labels. */
     int getMidiMappingGeneration() const noexcept { return midiMappingGeneration.load(); }
@@ -136,6 +143,12 @@ private:
         std::atomic<float>* transpose = nullptr;
         std::atomic<float>* mix = nullptr;
         std::array<std::atomic<float>*, 12> noteStates {};
+        std::atomic<float>* midiTarget = nullptr;
+        std::atomic<float>* midiScaleLearn = nullptr;
+        struct Voice { std::atomic<float>* mode, * degrees, * semitones, * formant, * pan, * level, * humanize, * mute, * solo; };
+        std::array<Voice, dsp::HarmonyEngine::kVoices> voices {};
+        std::atomic<float>* busHpf = nullptr, * busLpf = nullptr, * busEqFreq = nullptr, * busEqGain = nullptr,
+                          * busAttack = nullptr, * busRelease = nullptr, * busGate = nullptr, * busWidth = nullptr;
         std::atomic<float>* formantPreserve = nullptr;
         std::atomic<float>* formantShift = nullptr;
         std::atomic<float>* formantLink = nullptr;
@@ -177,6 +190,11 @@ private:
     float vibratoKeep = 1.0f;          // 0..2 ("Conservar vibrato")
     float outputGain = 1.0f, outputGainTarget = 1.0f; // vibrato amplitude modulation
     bool hqActive = false;
+    dsp::HarmonyEngine harmony;
+    dsp::MidiNoteState midiNotes;
+    bool midiTargetOn = false;
+    bool wasLearningScale = false; // message thread
+    uint16_t appliedLearnedMask = 0; // message thread
     std::array<int, kNumQualityModes> modeLatency {};
 
     std::vector<float> monoScratch;

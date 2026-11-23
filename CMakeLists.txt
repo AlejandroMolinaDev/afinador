@@ -121,6 +121,9 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoAnalyzer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoSynth.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoSynth.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HarmonyEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HarmonyEngine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/MidiNoteState.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp signalsmith-stretch)

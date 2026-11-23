@@ -86,5 +86,27 @@ int main()
         }
         std::printf ("\n");
     }
+
+    std::printf ("\nTracking + 4 harmony voices (diatonic/semitone/MIDI), stereo\n");
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        NovaPitchProcessor proc;
+        for (int v = 1; v <= 4; ++v)
+            if (auto* param = proc.getValueTreeState().getParameter (ParamIDs::harmonyVoice ("hvMode", v)))
+                param->setValueNotifyingHost (param->convertTo0to1 (v == 4 ? 2.0f : 1.0f));
+        proc.prepareToPlay (sr, block);
+        const auto sig = benchSignal (sr, seconds);
+        juce::AudioBuffer<float> buffer (2, block);
+        juce::MidiBuffer midi;
+        const double pct = percentOfCore (seconds, [&] {
+            for (size_t pos = 0; pos + block <= sig.size(); pos += block)
+            {
+                buffer.copyFrom (0, 0, sig.data() + pos, block);
+                buffer.copyFrom (1, 0, sig.data() + pos, block);
+                proc.processBlock (buffer, midi);
+            }
+        });
+        std::printf ("  %6.1f kHz: %6.2f%% of one core\n", sr / 1000.0, pct);
+    }
     return 0;
 }

@@ -79,6 +79,23 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.vibVariation = get (ParamIDs::vibVariation);
     params.vibAmpMod = get (ParamIDs::vibAmpMod);
     params.vibFormantMod = get (ParamIDs::vibFormantMod);
+    params.midiTarget = get (ParamIDs::midiTarget);
+    params.midiScaleLearn = get (ParamIDs::midiScaleLearn);
+    for (int v = 0; v < dsp::HarmonyEngine::kVoices; ++v)
+    {
+        auto id = [v] (const char* field) { return ParamIDs::harmonyVoice (field, v + 1); };
+        params.voices[static_cast<size_t> (v)] = { get (id ("hvMode")), get (id ("hvDegrees")), get (id ("hvSemitones")),
+                                                   get (id ("hvFormant")), get (id ("hvPan")), get (id ("hvLevel")),
+                                                   get (id ("hvHumanize")), get (id ("hvMute")), get (id ("hvSolo")) };
+    }
+    params.busHpf = get (ParamIDs::hBusHpf);
+    params.busLpf = get (ParamIDs::hBusLpf);
+    params.busEqFreq = get (ParamIDs::hBusEqFreq);
+    params.busEqGain = get (ParamIDs::hBusEqGain);
+    params.busAttack = get (ParamIDs::hBusAttack);
+    params.busRelease = get (ParamIDs::hBusRelease);
+    params.busGate = get (ParamIDs::hBusGate);
+    params.busWidth = get (ParamIDs::hBusWidth);
 
     pitchDetector.setListener (this);
     presetManager = std::make_unique<PresetManager> (apvts);
@@ -138,6 +155,9 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     shifter.prepare (sampleRate, latencyForMode (QualityMode::Tracking, sampleRate) + 16);
     hqShifter.prepare (sampleRate, juce::jlimit (1, dsp::HqShifter::kMaxChannels, getTotalNumInputChannels()), kControlBlock);
 
+    // Harmony voices use PSOLA with the lead's latency (up to the HQ one).
+    harmony.prepare (sampleRate, latencyForMode (QualityMode::HQ, sampleRate) + 16, kControlBlock, pitchDetector.getFrameRate());
+
     for (int m = 0; m < kNumQualityModes; ++m)
         modeLatency[static_cast<size_t> (m)] = m == static_cast<int> (QualityMode::HQ)
                                                    ? hqShifter.getLatency()
@@ -146,6 +166,8 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     updateDspFromParameters();
     shifter.reset();
     hqShifter.reset();
+    harmony.reset();
+    midiNotes.allOff();
 
     // prepareToPlay runs outside the audio callback: report latency right away.
     const int latency = modeLatency[static_cast<size_t> (blockMode)];
@@ -178,6 +200,34 @@ void NovaPitchProcessor::timerCallback()
 
     if (midiLearn.dispatchPending())
         ++midiMappingGeneration;
+
+    applyLearnedScale();
+}
+
+void NovaPitchProcessor::applyLearnedScale()
+{
+    const bool learning = params.midiScaleLearn->load() > 0.5f;
+    if (learning && ! wasLearningScale)
+    {
+        midiNotes.clearLearned(); // a new learning pass starts empty
+        appliedLearnedMask = 0;
+    }
+    wasLearningScale = learning;
+    if (! learning)
+        return;
+
+    const auto mask = midiNotes.getLearnedMask();
+    if (mask == 0 || mask == appliedLearnedMask)
+        return;
+    appliedLearnedMask = mask;
+
+    auto set = [this] (const juce::String& id, float value) {
+        if (auto* p = apvts.getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (value));
+    };
+    set (ParamIDs::scale, static_cast<float> (dsp::ScaleType::Custom));
+    for (int pc = 0; pc < 12; ++pc)
+        set (ParamIDs::noteState (pc), static_cast<float> ((mask >> pc) & 1u ? dsp::NoteState::Active : dsp::NoteState::Remove));
 }
 
 //==============================================================================
@@ -251,6 +301,35 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
     const int latency = modeLatency[static_cast<size_t> (blockMode)];
     if (! hqActive && latency != shifter.getLatency())
         shifter.setLatency (latency); // fades in
+    harmony.setLatency (latency);
+
+    // MIDI + harmonies
+    midiTargetOn = params.midiTarget->load (std::memory_order_relaxed) > 0.5f;
+    for (int v = 0; v < dsp::HarmonyEngine::kVoices; ++v)
+    {
+        const auto& pv = params.voices[static_cast<size_t> (v)];
+        dsp::HarmonyVoiceSettings hv;
+        hv.mode = static_cast<dsp::HarmonyMode> (juce::jlimit (0, dsp::kNumHarmonyModes - 1, choiceIndex (pv.mode)));
+        hv.degrees = choiceIndex (pv.degrees);
+        hv.semitones = choiceIndex (pv.semitones);
+        hv.formantSt = pv.formant->load (std::memory_order_relaxed);
+        hv.pan = pv.pan->load (std::memory_order_relaxed) / 100.0f;
+        hv.levelDb = pv.level->load (std::memory_order_relaxed);
+        hv.humanize = pv.humanize->load (std::memory_order_relaxed) / 100.0f;
+        hv.mute = pv.mute->load (std::memory_order_relaxed) > 0.5f;
+        hv.solo = pv.solo->load (std::memory_order_relaxed) > 0.5f;
+        harmony.setVoice (v, hv);
+    }
+    dsp::HarmonyBusSettings hb;
+    hb.hpfHz = params.busHpf->load (std::memory_order_relaxed);
+    hb.lpfHz = params.busLpf->load (std::memory_order_relaxed);
+    hb.eqFreqHz = params.busEqFreq->load (std::memory_order_relaxed);
+    hb.eqGainDb = params.busEqGain->load (std::memory_order_relaxed);
+    hb.attackMs = params.busAttack->load (std::memory_order_relaxed);
+    hb.releaseMs = params.busRelease->load (std::memory_order_relaxed);
+    hb.gateDb = params.busGate->load (std::memory_order_relaxed);
+    hb.width = params.busWidth->load (std::memory_order_relaxed) / 100.0f;
+    harmony.setBus (hb);
     if (latency != desiredLatency.load (std::memory_order_relaxed))
         desiredLatency.store (latency);
 }
@@ -265,8 +344,26 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     const auto vib = vibratoAnalyzer.process (voiced, detectedMidi * 100.0f);
     const float centreMidi = voiced ? vib.centreCents / 100.0f : 0.0f;
 
+    std::array<int, 16> held {};
+    const int numHeld = midiNotes.heldNotes (held);
+
     dsp::NoteTarget target;
-    if (voiced)
+    if (voiced && midiTargetOn && numHeld > 0)
+    {
+        // MIDI Target: the held note (any octave) closest to the sung pitch.
+        float best = 1.0e9f;
+        for (int i = 0; i < numHeld; ++i)
+        {
+            const int h = held[static_cast<size_t> (i)];
+            const int candidate = h + 12 * static_cast<int> (std::lround ((centreMidi - static_cast<float> (h)) / 12.0f));
+            if (std::abs (centreMidi - static_cast<float> (candidate)) < best)
+            {
+                best = std::abs (centreMidi - static_cast<float> (candidate));
+                target = { true, true, candidate, static_cast<float> (candidate) };
+            }
+        }
+    }
+    else if (voiced)
         target = noteMapper.map (centreMidi);
     else
         noteMapper.reset();
@@ -295,6 +392,25 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
         const float period = voiced ? static_cast<float> (inputSampleRate / e.frequencyHz) : 0.0f;
         shifter.setControl (voiced, period, ratio);
         shifter.setFormantFactor (formantPreserve ? formant : formant * ratio);
+    }
+
+    if (harmony.anyVoiceEnabled())
+    {
+        dsp::HarmonyFrame hf;
+        hf.voiced = voiced;
+        hf.periodSamples = voiced ? static_cast<float> (inputSampleRate / e.frequencyHz) : 0.0f;
+        hf.detectedMidi = detectedMidi;
+        hf.leadOutputMidi = detectedMidi + totalCents / 100.0f;
+        hf.leadNote = target.hasTarget ? target.note + static_cast<int> (transposeSemitones) : -1;
+        uint16_t mask = 0;
+        for (int pc = 0; pc < 12; ++pc)
+            if (const auto st = noteMapper.getEffectiveState (pc); st == dsp::NoteState::Active || st == dsp::NoteState::Ignore)
+                mask = static_cast<uint16_t> (mask | (1u << pc));
+        hf.scaleMask = mask;
+        hf.inputRmsDb = e.rmsDb;
+        hf.numHeld = numHeld;
+        hf.held = held;
+        harmony.updateControl (hf);
     }
 
     PitchFrame frame;
@@ -409,16 +525,19 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
             for (int ch = 0; ch < numIn; ++ch)
                 juce::FloatVectorOperations::multiply (channels[static_cast<size_t> (ch)], outputGain, n);
         }
+
+        // Mono -> Stereo: duplicate the lead, then the stereo harmony bus goes on top.
+        if (numIn == 1 && numOut >= 2)
+            buffer.copyFrom (1, start, buffer, 0, start, n);
+
+        if (! bypassed && harmony.anyVoiceEnabled())
+            harmony.process (monoScratch.data(), buffer.getWritePointer (0, start),
+                             numOut >= 2 ? buffer.getWritePointer (1, start) : buffer.getWritePointer (0, start), n);
     }
 
-    // Mono -> Stereo: duplicate; any other extra output channel is cleared.
-    for (int ch = numIn; ch < numOut; ++ch)
-    {
-        if (numIn == 1)
-            buffer.copyFrom (ch, 0, buffer, 0, 0, numSamples);
-        else
-            buffer.clear (ch, 0, numSamples);
-    }
+    // Any further output channel is cleared.
+    for (int ch = juce::jmax (numIn, 2); ch < numOut; ++ch)
+        buffer.clear (ch, 0, numSamples);
 
     // Never send NaN / Inf to the host.
     for (int ch = 0; ch < numOut; ++ch)
@@ -450,6 +569,16 @@ void NovaPitchProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     updateMax (diagnostics.maxBlockSize, numSamples);
 
     midiLearn.processMidi (midi); // CC -> learned parameters (applied on the message thread)
+    for (const auto metadata : midi)
+    {
+        const auto m = metadata.getMessage();
+        if (m.isNoteOn())
+            midiNotes.noteOn (m.getNoteNumber());
+        else if (m.isNoteOff())
+            midiNotes.noteOff (m.getNoteNumber());
+        else if (m.isAllNotesOff() || m.isAllSoundOff())
+            midiNotes.allOff();
+    }
     updateDspFromParameters();
     runChain (buffer, false);
 }

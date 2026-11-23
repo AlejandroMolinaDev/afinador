@@ -266,3 +266,37 @@ Measured: depth 29.7 c for 30 c set, flat before the delay.
 
 ### CPU after phase 5 (whole chain, 48 kHz, 128-sample blocks)
 Live 1.9 % · Tracking 1.9 % · HQ 5.8 % · Vintage 1.8 % (vibrato analysis is negligible).
+
+---
+
+## Phase 7 — harmonies and MIDI
+
+### MIDI (`dsp/MidiNoteState.h`, processor)
+- Note on/off parsed per block from the host MIDI buffer (FL: plugin wrapper ⚙ → MIDI → Input port, plus a
+  "MIDI Out" channel on the same port). Held notes: 128-bit set; a relaxed-atomic snapshot feeds the UI.
+- **MIDI Target** (`midiTarget`): the held note whose octave copy is closest to the sung centre pitch is
+  the target (overrides the NoteMapper). Sing in any octave.
+- **Learn scale** (`midiScaleLearn`): pitch classes of note-ons are OR-ed into an atomic mask on the audio
+  thread; the processor's message-thread timer writes them into `scale = Personalizada` and
+  `noteState0..11` (learnt → Activa, others → Eliminar), so the learnt scale is visible, automatable and
+  saved with the project. Each new learning pass starts empty.
+
+### HarmonyEngine (`dsp/HarmonyEngine.{h,cpp}`)
+- 4 voices; each owns a PsolaShifter (formant preserving, own formant factor) running with **the lead's
+  latency** (3 / 10 / 100 ms), so harmonies stay aligned with the corrected lead in every mode. The lead's
+  analysis is reused (f0, voicing, target note, scale); voices only add their interval.
+- Voice pitch: base = lead target note (incl. transposition); deviation = lead output − base (vibrato and
+  expression are inherited).
+  - Diatonic: `stepDegrees(base, n, scaleMask)` — n scale steps in the current effective scale (Active or
+    Ignore notes); a base outside the scale snaps to the nearest scale note first. In C major from E: +2 → G
+    (minor 3rd), from C: +2 → E (major 3rd).
+  - Semitones: lead output + n.
+  - MIDI: i-th lowest held note (+ deviation); silent when fewer notes are held.
+- Humanize h: slow random detune (±12 c × h, ~0.5 Hz) and a fixed delay (0–30 ms × h, different per voice).
+- Gate: voices open only when the input level is above the bus gate; attack/release envelope per voice.
+- Bus: HPF → LPF → peaking EQ (RBJ, Q 0.9) → width (M/S), then added to the output (stereo; summed for
+  mono outputs). Mute/solo per voice. The lead's mix knob doesn't affect harmonies; bypass mutes them.
+- Measured: diatonic third / +7 st / MIDI chord voices within 5 c (tests), pan hard-left < 1 % on R, gate
+  and mute silent, 0 allocations with 4 voices and MIDI chords toggling.
+- CPU (Linux container, 48 kHz, 128-sample blocks): Tracking lead 1.9 %, + 4 voices 4.1 % (~0.55 % per voice).
+  Each voice currently tracks epochs itself; sharing the lead's epochs is a possible optimisation (ROADMAP).

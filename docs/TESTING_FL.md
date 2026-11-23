@@ -130,5 +130,21 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 64 | `···` → *Color de acento*: cambia el color y se mantiene al reabrir el proyecto | | |
 | 65 | Redimensionar 75 %–200 % en pantallas HiDPI (Windows 150 %/200 %, Retina) | | |
 
+## Fase 7 — Armonías y MIDI
+
+> Automático en CI: pasos diatónicos, voces diatónica/semitonos/MIDI a la afinación correcta (< 5 ¢), gate/pan/mute, MIDI Target (nota sostenida en otra octava), aprender escala (parámetros escritos), armonías en Live/Tracking/HQ sin NaN, 0 asignaciones con 4 voces y acordes, ida y vuelta texto↔valor de los 80 parámetros.
+
+**Enrutar MIDI a NovaPitch en FL Studio:** ventana del plugin → ⚙ (Settings) → *MIDI* → *Input port* = 1. Crea un canal *MIDI Out* en el Channel Rack con *Port* = 1 y escribe notas/acordes en su Piano roll.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 66 | Preset **Armonías 3as**: dos voces (3ª arriba y abajo) que siguen la escala de la canción | | |
+| 67 | Voz en modo **MIDI** + acordes en el Piano roll: las voces cantan las notas del acorde | | |
+| 68 | **MIDI: nota objetivo** con una melodía en el Piano roll: la voz sigue exactamente esas notas | | |
+| 69 | **Aprender escala**: tocar las notas de la escala → Escala = Personalizada con esas notas; desactivar y comprobar que se conserva al reabrir | | |
+| 70 | Pestaña MIDI: muestra las notas que llegan desde FL | | |
+| 71 | Humanizar, panorama, mute/solo y bus (EQ, gate, ancho) suenan como se espera | | |
+| 72 | CPU con 4 voces a 48 kHz (*Performance monitor*): anotar % | | |
+
 ## Notas / incidencias encontradas
 - 

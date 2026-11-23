@@ -107,7 +107,9 @@ int main (int argc, char* argv[])
         return nullptr;
     };
 
-    for (const auto* tab : { "Formantes", "Vibrato" })
+    const std::pair<const char*, const char*> tabs[] = { { "Formantes", "formantes" }, { "Vibrato", "vibrato" },
+                                                         { "Armonías", "armonias" }, { "Bus", "bus" }, { "MIDI", "midi" } };
+    for (const auto& [tab, slug] : tabs)
     {
         if (auto* button = findButton (*editor, juce::String::fromUTF8 (tab)))
         {
@@ -123,14 +125,14 @@ int main (int argc, char* argv[])
                 if ((p / 256) % 6 == 0)
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (30);
             }
-            const auto file = outDir.getChildFile ("editor-tab-" + juce::String (tab).toLowerCase() + ".png");
+            const auto file = outDir.getChildFile ("editor-tab-" + juce::String (slug) + ".png");
             const bool written = writePng (editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f), file);
             std::cout << (written ? "wrote " : "FAILED ") << file.getFullPathName() << std::endl;
             ok = ok && written;
         }
         else
         {
-            std::cout << "tab not found: " << tab << std::endl;
+            std::cout << "tab not found: " << slug << std::endl;
             ok = false;
         }
     }

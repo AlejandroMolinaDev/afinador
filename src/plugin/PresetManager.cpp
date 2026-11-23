@@ -35,6 +35,12 @@ const std::vector<FactoryPreset>& factoryPresets()
                        { ParamIDs::tolerance, 10.0f }, { ParamIDs::naturalHold, 20.0f } } },
         { "Voz grave", { { ParamIDs::inputProfile, 2.0f }, { ParamIDs::qualityMode, 1.0f },
                          { ParamIDs::retuneSpeed, 50.0f }, { ParamIDs::naturalHold, 40.0f } } },
+        { "Armonías 3as", { { ParamIDs::qualityMode, 1.0f }, { ParamIDs::retuneSpeed, 30.0f },
+                            { ParamIDs::harmonyVoice ("hvMode", 1), 1.0f }, { ParamIDs::harmonyVoice ("hvDegrees", 1), 2.0f },
+                            { ParamIDs::harmonyVoice ("hvPan", 1), -45.0f }, { ParamIDs::harmonyVoice ("hvLevel", 1), -7.0f },
+                            { ParamIDs::harmonyVoice ("hvMode", 2), 1.0f }, { ParamIDs::harmonyVoice ("hvDegrees", 2), -2.0f },
+                            { ParamIDs::harmonyVoice ("hvPan", 2), 45.0f }, { ParamIDs::harmonyVoice ("hvLevel", 2), -9.0f },
+                            { ParamIDs::harmonyVoice ("hvFormant", 2), -1.0f } } },
     };
     return presets;
 }

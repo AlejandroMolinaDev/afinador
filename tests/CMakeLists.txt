@@ -11,6 +11,7 @@ add_executable(NovaPitchTests
     unit/RealtimeSafetyTests.cpp
     unit/VibratoTests.cpp
     unit/PresetMidiTests.cpp
+    unit/HarmonyMidiTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )

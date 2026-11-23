@@ -151,8 +151,69 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     pages[2].addAndMakeVisible (vibratoDisplay);
     vibratoDisplay.setAccent (lookAndFeel.getAccent());
 
+    // Harmonies ----------------------------------------------------------------------
+    for (int v = 0; v < 4; ++v)
+    {
+        auto& vp = voicePanels[static_cast<size_t> (v)];
+        auto id = [v] (const char* field) { return ParamIDs::harmonyVoice (field, v + 1); };
+        vp.mode = std::make_unique<LabeledCombo> (state, id ("hvMode"), u8 ("Modo"),
+            u8 ("Diatónica: intervalo en grados de la escala actual (la 3ª será mayor o menor según la nota). "
+                "Semitonos: intervalo fijo. MIDI: la voz canta la nota del acorde que tocas en el piano roll."));
+        vp.degrees = std::make_unique<LabeledKnob> (state, id ("hvDegrees"), u8 ("Intervalo"),
+            u8 ("Grados de la escala desde la nota de la voz principal: 3ª arriba, 5ª, 6ª abajo, 8ª..."));
+        vp.semitones = std::make_unique<LabeledKnob> (state, id ("hvSemitones"), u8 ("Semitonos"),
+            u8 ("Intervalo fijo en semitonos (±24)."));
+        vp.formant = std::make_unique<LabeledKnob> (state, id ("hvFormant"), u8 ("Formante"),
+            u8 ("Timbre de esta voz (±12 st) para diferenciarla de la principal."));
+        vp.pan = std::make_unique<LabeledKnob> (state, id ("hvPan"), u8 ("Panorama"), u8 ("Posición estéreo de la voz."));
+        vp.level = std::make_unique<LabeledKnob> (state, id ("hvLevel"), u8 ("Nivel"), u8 ("Volumen de la voz."));
+        vp.humanize = std::make_unique<LabeledKnob> (state, id ("hvHumanize"), u8 ("Humanizar"),
+            u8 ("Micro-desafinación lenta (hasta ±12 ¢) y retardo (hasta 30 ms) para que no suene a copia exacta."));
+        vp.mute = std::make_unique<LabeledToggle> (state, id ("hvMute"), "Mute", u8 ("Silencia esta voz."));
+        vp.solo = std::make_unique<LabeledToggle> (state, id ("hvSolo"), "Solo", u8 ("Escucha solo las voces en solo."));
+        for (auto* c : std::initializer_list<juce::Component*> { vp.mode.get(), vp.degrees.get(), vp.semitones.get(), vp.formant.get(),
+                                                                 vp.pan.get(), vp.level.get(), vp.humanize.get(), vp.mute.get(), vp.solo.get() })
+            vp.panel.addAndMakeVisible (c);
+        vp.mode->getCombo().onChange = [this] { updateVoiceVisibility(); };
+        pages[3].addChildComponent (vp.panel);
+
+        auto& b = voiceButtons[static_cast<size_t> (v)];
+        b.setButtonText (u8 ("Voz ") + juce::String (v + 1));
+        b.setRadioGroupId (2002);
+        b.setClickingTogglesState (true);
+        b.setColour (juce::TextButton::buttonColourId, Palette::panelRaised);
+        b.setColour (juce::TextButton::textColourOffId, Palette::textMuted);
+        b.setColour (juce::TextButton::textColourOnId, Palette::background);
+        b.onClick = [this, v] { if (voiceButtons[static_cast<size_t> (v)].getToggleState()) selectVoice (v); };
+        pages[3].addAndMakeVisible (b);
+    }
+    voiceButtons[0].setToggleState (true, juce::dontSendNotification);
+    selectVoice (0);
+
+    const std::pair<const char*, const char*> busControls[] = {
+        { ParamIDs::hBusHpf, "Paso-alto" }, { ParamIDs::hBusLpf, "Paso-bajo" }, { ParamIDs::hBusEqFreq, "EQ frec." },
+        { ParamIDs::hBusEqGain, "EQ ganancia" }, { ParamIDs::hBusAttack, "Ataque" }, { ParamIDs::hBusRelease, "Liberación" },
+        { ParamIDs::hBusGate, "Gate" }, { ParamIDs::hBusWidth, "Ancho" } };
+    const char* busTips[] = { "Filtro paso-alto del bus de armonías.", "Filtro paso-bajo del bus de armonías.",
+                              "Frecuencia del ecualizador de campana.", "Ganancia de la campana (±12 dB).",
+                              "Entrada de las voces al empezar una nota.", "Salida de las voces al terminar una nota.",
+                              "Por debajo de este nivel de entrada las armonías se callan (evita armonías de ruido).",
+                              "Ancho estéreo del bus (0 = mono, 200 % = muy abierto)." };
+    for (size_t i = 0; i < std::size (busControls); ++i)
+    {
+        busKnobs.push_back (std::make_unique<LabeledKnob> (state, busControls[i].first, u8 (busControls[i].second), u8 (busTips[i])));
+        pages[4].addAndMakeVisible (*busKnobs.back());
+    }
+
+    midiToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::midiTarget, u8 ("MIDI: nota objetivo"),
+        u8 ("La nota MIDI sostenida (en la octava más cercana a la voz) es el objetivo de la corrección.")));
+    midiToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::midiScaleLearn, u8 ("Aprender escala por MIDI"),
+        u8 ("Mientras está activo, las notas que toques definen una escala personalizada (Escala = Personalizada).")));
+    for (auto& t : midiToggles)
+        pages[5].addAndMakeVisible (*t);
+
     // Tabs --------------------------------------------------------------------------
-    const char* tabNames[] = { "Corrección", "Formantes", "Vibrato" };
+    const char* tabNames[] = { "Corrección", "Formantes", "Vibrato", "Armonías", "Bus", "MIDI" };
     for (size_t i = 0; i < tabs.size(); ++i)
     {
         auto& t = tabs[i];
@@ -217,9 +278,13 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
 std::vector<LabeledKnob*> PluginEditor::allKnobs() const
 {
     std::vector<LabeledKnob*> out;
-    for (const auto* group : { &knobs, &formantKnobs, &vibratoKnobs })
+    for (const auto* group : { &knobs, &formantKnobs, &vibratoKnobs, &busKnobs })
         for (const auto& k : *group)
             out.push_back (k.get());
+    for (const auto& vp : voicePanels)
+        for (auto* k : { vp.degrees.get(), vp.semitones.get(), vp.formant.get(), vp.pan.get(), vp.level.get(), vp.humanize.get() })
+            if (k != nullptr)
+                out.push_back (k);
     return out;
 }
 
@@ -360,6 +425,28 @@ void PluginEditor::refreshMidiLabels()
     shownLearning = learning;
 }
 
+void PluginEditor::selectVoice (int v)
+{
+    selectedVoice = juce::jlimit (0, 3, v);
+    for (int i = 0; i < 4; ++i)
+        voicePanels[static_cast<size_t> (i)].panel.setVisible (i == selectedVoice);
+    updateVoiceVisibility();
+}
+
+void PluginEditor::updateVoiceVisibility()
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& vp = voicePanels[static_cast<size_t> (i)];
+        const int mode = vp.mode->getCombo().getSelectedId() - 1;
+        vp.degrees->setVisible (mode != 2);   // diatonic (and off/MIDI: shows the default)
+        vp.semitones->setVisible (mode == 2); // semitones
+        static const char* modeShort[] = { "", " · Diat.", " · Semit.", " · MIDI" };
+        voiceButtons[static_cast<size_t> (i)].setButtonText (u8 ("Voz ") + juce::String (i + 1)
+                                                             + u8 (modeShort[juce::jlimit (0, 3, mode)]));
+    }
+}
+
 void PluginEditor::showPage (Page page)
 {
     currentPage = page;
@@ -426,6 +513,21 @@ void PluginEditor::timerCallback()
     if (currentPage == Page::Vibrato)
         vibratoDisplay.repaint();
 
+    // Held MIDI notes (MIDI page)
+    if (currentPage == Page::Midi)
+    {
+        juce::StringArray names;
+        for (int n = 0; n < 128; ++n)
+            if (processor.getMidiNotes().isHeldSnapshot (n))
+                names.add (juce::String (dsp::midiNoteName (n)));
+        auto text = names.joinIntoString ("  ");
+        if (text != heldNotesText)
+        {
+            heldNotesText = text;
+            content.repaint (kPagePanel);
+        }
+    }
+
     // Presets / MIDI learn state changed (host automation, preset buttons, CC learnt...)
     if (processor.getPresetManager().getCurrentPresetName() != shownPresetName)
         refreshPresetBox();
@@ -481,7 +583,7 @@ void PluginEditor::Content::resized()
     // Tabs
     auto bar = kTabBar;
     for (auto& t : owner.tabs)
-        t.setBounds (bar.removeFromLeft (120).reduced (2, 0));
+        t.setBounds (bar.removeFromLeft (kTabBar.getWidth() / kNumPages).reduced (2, 0));
 
     for (auto& page : owner.pages)
         page.setBounds (kPagePanel);
@@ -505,6 +607,48 @@ void PluginEditor::Content::resized()
         row.removeFromLeft (20);
         for (auto& k : owner.formantKnobs)
             k->setBounds (row.removeFromLeft (100).reduced (4, 0));
+    }
+
+    // Page 4: [voice buttons] [mode + mute/solo] [interval, formant, pan, level, humanize]
+    {
+        auto row = local.reduced (10, 8);
+        auto buttons = row.removeFromLeft (110);
+        for (auto& b : owner.voiceButtons)
+            b.setBounds (buttons.removeFromTop (31).reduced (0, 2));
+        row.removeFromLeft (12);
+        for (auto& vp : owner.voicePanels)
+        {
+            vp.panel.setBounds (row.translated (0, 0));
+            auto r = vp.panel.getLocalBounds();
+            auto left = r.removeFromLeft (150);
+            vp.mode->setBounds (left.removeFromTop (44));
+            left.removeFromTop (8);
+            vp.mute->setBounds (left.removeFromTop (28));
+            vp.solo->setBounds (left.removeFromTop (28));
+            r.removeFromLeft (10);
+            const int w = r.getWidth() / 5;
+            auto interval = r.removeFromLeft (w);
+            vp.degrees->setBounds (interval);
+            vp.semitones->setBounds (interval);
+            for (auto* k : { vp.formant.get(), vp.pan.get(), vp.level.get(), vp.humanize.get() })
+                k->setBounds (r.removeFromLeft (w));
+        }
+    }
+
+    // Page 5: harmony bus knobs
+    {
+        auto row = local.reduced (8, 10);
+        const int w = row.getWidth() / static_cast<int> (owner.busKnobs.size());
+        for (auto& k : owner.busKnobs)
+            k->setBounds (row.removeFromLeft (w).reduced (2, 0));
+    }
+
+    // Page 6: MIDI toggles (held notes and routing help are painted)
+    {
+        auto col = local.reduced (16, 14).removeFromLeft (260);
+        col.removeFromTop (22);
+        for (auto& t : owner.midiToggles)
+            t->setBounds (col.removeFromTop (34));
     }
 
     // Page 3: [display][keep] | [synth knobs x6]
@@ -566,6 +710,27 @@ void PluginEditor::Content::paint (juce::Graphics& g)
         g.setFont (juce::FontOptions (11.0f));
         g.drawFittedText (u8 ("Timbre de la voz, independiente de la afinación"), caption.removeFromTop (44.0f).toNearestInt(),
                           juce::Justification::topLeft, 3, 1.0f);
+    }
+    else if (owner.currentPage == Page::Midi)
+    {
+        auto area = kPagePanel.toFloat().reduced (16.0f, 14.0f);
+        g.setColour (Palette::textMuted);
+        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.drawText (u8 ("MIDI"), area.removeFromTop (18.0f).withWidth (260.0f), juce::Justification::centredLeft);
+
+        auto info = kPagePanel.toFloat().reduced (16.0f, 14.0f).withTrimmedLeft (290.0f);
+        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+        g.drawText (u8 ("NOTAS MIDI RECIBIDAS"), info.removeFromTop (16.0f), juce::Justification::centredLeft);
+        g.setColour (Palette::textPrimary);
+        g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+        g.drawText (owner.heldNotesText.isEmpty() ? u8 ("—") : owner.heldNotesText, info.removeFromTop (26.0f),
+                    juce::Justification::centredLeft);
+        g.setColour (Palette::textMuted);
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawFittedText (u8 ("FL Studio: en el plugin, ⚙ → MIDI → Input port = 1. Luego crea un canal "
+                              "«MIDI Out» con el mismo puerto y escribe notas o acordes en su Piano roll "
+                              "(acordes = armonías en modo MIDI)."),
+                          info.toNearestInt(), juce::Justification::topLeft, 4, 1.0f);
     }
     else if (owner.currentPage == Page::Vibrato && owner.vibratoKnobs.size() > 1)
     {

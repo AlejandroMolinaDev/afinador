@@ -45,6 +45,19 @@ inline constexpr const char* vibDelay = "vibDelay";
 inline constexpr const char* vibVariation = "vibVariation";
 inline constexpr const char* vibAmpMod = "vibAmpMod";
 inline constexpr const char* vibFormantMod = "vibFormantMod";
+inline constexpr const char* midiTarget = "midiTarget";         // phase 7
+inline constexpr const char* midiScaleLearn = "midiScaleLearn";
+inline constexpr const char* hBusHpf = "hBusHpf";
+inline constexpr const char* hBusLpf = "hBusLpf";
+inline constexpr const char* hBusEqFreq = "hBusEqFreq";
+inline constexpr const char* hBusEqGain = "hBusEqGain";
+inline constexpr const char* hBusAttack = "hBusAttack";
+inline constexpr const char* hBusRelease = "hBusRelease";
+inline constexpr const char* hBusGate = "hBusGate";
+inline constexpr const char* hBusWidth = "hBusWidth";
+
+/** Harmony voice parameters, voice = 1..4: "hvMode1", "hvDegrees1", ... */
+juce::String harmonyVoice (const char* field, int voice);
 
 /** "noteState0" (C) .. "noteState11" (B). */
 juce::String noteState (int pitchClass);

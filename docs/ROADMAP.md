@@ -10,7 +10,7 @@ Estado por fases (ver especificación original, sección 11).
 | 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ✅ Hecho (prueba manual en FL pendiente) |
 | 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ✅ Hecho (prueba manual en FL pendiente) |
 | 6 | UI completa + presets + redimensionado + MIDI Learn | ✅ Hecho (pendiente tu revisión visual y prueba en FL) |
-| 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ⏳ |
+| 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ✅ Hecho (prueba manual en FL pendiente) |
 | 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ⏳ |
 | 9 | Corrección temporal, detector de tonalidad + sync de instancias, ARA2, AAX, Linux | ⏳ |
 | 10 | Instaladores (Inno Setup / .pkg firmado y notarizado), guía de usuario | ⏳ |
@@ -57,13 +57,19 @@ Estado por fases (ver especificación original, sección 11).
 - [x] MIDI Learn (clic derecho en cualquier knob), mapeos guardados en el proyecto.
 - [x] Color de acento configurable (guardado en el proyecto).
 - [ ] **Revisión visual por tu parte** (criterio de aceptación de la Fase 6): capturas en el artefacto `UI-snapshots-*` de cada ejecución de CI.
-- [ ] Preset "Armonías 3as": llega con el HarmonyEngine (Fase 7).
+- [x] Preset "Armonías 3as" (Fase 7).
 - [ ] Indicador de preset modificado ("*") y comparación A/B.
 - [ ] Archivo global de usuario para mapeos MIDI por defecto (opcional en la especificación; hoy se guardan en cada proyecto).
 - [ ] Teclado de 12 notas en la UI (estados Activa/Ignorar/Eliminar): los parámetros `noteState0..11` existen y son automatizables; falta el componente visual.
 - [ ] MIDI Learn en VST3 dentro de FL: FL no envía CC a efectos VST3 sin parámetros CC emulados (desactivados a propósito). Se documenta "Link to controller" de FL; en CLAP/AU/Standalone funciona directo.
 - [ ] Guardar el tamaño de la ventana del editor en el estado del plugin.
 - [ ] Color de acento configurable desde la UI (la infraestructura `NovaLookAndFeel::setAccent` ya existe).
+
+### Fase 7
+- [ ] Prueba en FL: armonías por acordes desde el piano roll (canal MIDI Out → puerto del plugin), MIDI Target y aprender escala — `docs/TESTING_FL.md`, sección Fase 7.
+- [ ] CPU: las voces de armonía comparten el análisis de f0 pero cada una marca sus propias épocas; compartir las épocas de la voz principal ahorraría ~30 % por voz.
+- [ ] Armonías en modo HQ usan PSOLA (alineado con la latencia de HQ); un modo HQ para las voces costaría ~5 % de CPU por voz.
+- [ ] Asignación de voces en modo MIDI: hoy voz i = i-ésima nota más grave; opción de "nota más cercana" para voice leading.
 
 ### Fase 9
 - [ ] ARA SDK 2.3.0 (compatible con JUCE 8.0.13+).

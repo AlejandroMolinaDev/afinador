@@ -66,6 +66,10 @@ TEST_CASE ("processBlock does not allocate in any mode", "[realtime]")
     setParam (p, ParamIDs::transpose, 5.0f);
     setParam (p, ParamIDs::formantShift, 3.0f);
     setParam (p, ParamIDs::scale, 0.0f);
+    setParam (p, ParamIDs::vibDepth, 30.0f);
+    for (int v = 1; v <= 4; ++v) // all four harmony voices, every mode
+        setParam (p, ParamIDs::harmonyVoice ("hvMode", v), static_cast<float> (1 + (v % 3)));
+    setParam (p, ParamIDs::midiTarget, 1.0f);
     p.prepareToPlay (sr, 512);
 
     const auto sig = signals::concat ({ signals::sawtooth (233.0, sr, 0.6), signals::whiteNoise (sr, 0.2, 0.2f, 4u),
@@ -82,6 +86,11 @@ TEST_CASE ("processBlock does not allocate in any mode", "[realtime]")
             buffer.setSize (2, n, false, false, true); // no reallocation: keeps the 512-sample storage
             buffer.copyFrom (0, 0, sig.data() + pos, n);
             buffer.copyFrom (1, 0, sig.data() + pos, n);
+            midi.clear();
+            if ((pos / 512) % 7 == 0) // MIDI chords in and out
+                midi.addEvent (juce::MidiMessage::noteOn (1, 60 + static_cast<int> (pos % 12), 0.8f), 0);
+            if ((pos / 512) % 7 == 3)
+                midi.addEvent (juce::MidiMessage::allNotesOff (1), 0);
             p.processBlock (buffer, midi);
             pos += static_cast<size_t> (n);
         }

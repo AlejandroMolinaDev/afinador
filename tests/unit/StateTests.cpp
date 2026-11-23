@@ -71,3 +71,20 @@ TEST_CASE ("Test names are plain ASCII (CTest on Windows mangles other character
         CHECK (std::all_of (name.begin(), name.end(), [] (char c) { return static_cast<unsigned char> (c) < 128; }));
     }
 }
+
+TEST_CASE ("Every parameter's text round-trips through its value (hosts type values)", "[state][params]")
+{
+    JuceFixture fixture;
+    NovaPitchProcessor p;
+    for (auto* param : p.getParameters())
+    {
+        for (const float v : { 0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f })
+        {
+            const auto text = param->getText (v, 64);
+            const float back = param->getValueForText (text);
+            const auto text2 = param->getText (back, 64);
+            INFO (param->getName (64) << ": " << v << " -> '" << text << "' -> " << back << " -> '" << text2 << "'");
+            CHECK (text == text2);
+        }
+    }
+}

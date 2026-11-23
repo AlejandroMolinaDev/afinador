@@ -27,6 +27,16 @@ public:
         setNormalised ((1.0 + cw) * 0.5, -(1.0 + cw), (1.0 + cw) * 0.5, 1.0 + alpha, -2.0 * cw, 1.0 - alpha);
     }
 
+    /** RBJ peaking EQ ("campana"). */
+    void setPeak (double sampleRate, double centreHz, double q, double gainDb) noexcept
+    {
+        const double a = std::pow (10.0, gainDb / 40.0);
+        const double w0 = 2.0 * std::numbers::pi * centreHz / sampleRate;
+        const double alpha = std::sin (w0) / (2.0 * q);
+        const double cw = std::cos (w0);
+        setNormalised (1.0 + alpha * a, -2.0 * cw, 1.0 - alpha * a, 1.0 + alpha / a, -2.0 * cw, 1.0 - alpha / a);
+    }
+
     void reset() noexcept { z1 = z2 = 0.0; }
 
     float process (float x) noexcept
