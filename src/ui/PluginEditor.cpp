@@ -41,10 +41,10 @@ juce::String channelName (int n)
 // Layout (base coordinates)
 const juce::Rectangle<int> kMeterBounds   { 20, 76, 470, 222 };
 const juce::Rectangle<int> kSidePanel     { 506, 76, 234, 222 };
-const juce::Rectangle<int> kKnobPanel     { 20, 312, 720, 138 };
-const juce::Rectangle<int> kFormantPanel  { 20, 462, 720, 118 };
-const juce::Rectangle<int> kTraceBounds   { 20, 592, 720, 110 };
-const juce::Rectangle<int> kFooterBounds  { 20, 710, 720, 16 };
+const juce::Rectangle<int> kTabBar        { 20, 310, 720, 28 };
+const juce::Rectangle<int> kPagePanel     { 20, 342, 720, 142 };
+const juce::Rectangle<int> kTraceBounds   { 20, 496, 720, 112 };
+const juce::Rectangle<int> kFooterBounds  { 20, 616, 720, 16 };
 } // namespace
 
 //==============================================================================
@@ -102,7 +102,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::referenceA4, u8 ("Referencia A4"),
         u8 ("Frecuencia del La 4 (400–480 Hz). 440 Hz es el estándar.")));
     for (auto& k : knobs)
-        content.addAndMakeVisible (*k);
+        pages[0].addAndMakeVisible (*k);
 
     // Formants -------------------------------------------------------------------
     formantToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::formantPreserve, u8 ("Preservar formantes"),
@@ -117,9 +117,48 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     formantKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::character, u8 ("Carácter"),
         u8 ("Escala la envolvente espectral ±50 %: simula un tracto vocal más corto (+) o más largo (−).")));
     for (auto& t : formantToggles)
-        content.addAndMakeVisible (*t);
+        pages[1].addAndMakeVisible (*t);
     for (auto& k : formantKnobs)
-        content.addAndMakeVisible (*k);
+        pages[1].addAndMakeVisible (*k);
+
+    // Vibrato ------------------------------------------------------------------------
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibratoPreserve, u8 ("Conservar"),
+        u8 ("Conservar vibrato (0–200 %): la corrección se aplica al centro de la nota y el vibrato natural "
+            "se mantiene (100 %), se elimina (0 %) o se exagera (200 %). En Vintage siempre se elimina.")));
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibRate, u8 ("Velocidad"),
+        u8 ("Vibrato artificial: frecuencia de la oscilación (0,1–10 Hz).")));
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibDepth, u8 ("Profundidad"),
+        u8 ("Vibrato artificial: amplitud en cents (0 = desactivado).")));
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibDelay, u8 ("Retardo"),
+        u8 ("Tiempo desde el inicio de cada nota hasta que entra el vibrato artificial (aparece con un fundido).")));
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibVariation, u8 ("Variación"),
+        u8 ("Variación aleatoria de velocidad y profundidad para un vibrato menos mecánico.")));
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibAmpMod, u8 ("Amplitud"),
+        u8 ("Modulación de volumen sincronizada con el vibrato (hasta ±25 %).")));
+    vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibFormantMod, u8 ("Formante"),
+        u8 ("Cuánto siguen los formantes al vibrato artificial (0 = timbre fijo, 100 % = timbre sigue al tono).")));
+    for (auto& k : vibratoKnobs)
+        pages[2].addAndMakeVisible (*k);
+    pages[2].addAndMakeVisible (vibratoDisplay);
+    vibratoDisplay.setAccent (lookAndFeel.getAccent());
+
+    // Tabs --------------------------------------------------------------------------
+    const char* tabNames[] = { "Corrección", "Formantes", "Vibrato" };
+    for (size_t i = 0; i < tabs.size(); ++i)
+    {
+        auto& t = tabs[i];
+        t.setButtonText (u8 (tabNames[i]));
+        t.setRadioGroupId (1001);
+        t.setClickingTogglesState (true);
+        t.setColour (juce::TextButton::buttonColourId, Palette::panel);
+        t.setColour (juce::TextButton::textColourOffId, Palette::textMuted);
+        t.setColour (juce::TextButton::textColourOnId, Palette::background);
+        t.onClick = [this, i] { if (tabs[i].getToggleState()) showPage (static_cast<Page> (i)); };
+        content.addAndMakeVisible (t);
+        content.addChildComponent (pages[i]);
+    }
+    tabs[0].setToggleState (true, juce::dontSendNotification);
+    showPage (Page::Correction);
 
     meter.setAccent (lookAndFeel.getAccent());
     trace.setAccent (lookAndFeel.getAccent());
@@ -132,6 +171,14 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
 
     footerText = buildFooterText();
     startTimerHz (30);
+}
+
+void PluginEditor::showPage (Page page)
+{
+    currentPage = page;
+    for (size_t i = 0; i < pages.size(); ++i)
+        pages[i].setVisible (static_cast<int> (i) == static_cast<int> (page));
+    content.repaint (kPagePanel);
 }
 
 PluginEditor::~PluginEditor()
@@ -174,6 +221,7 @@ void PluginEditor::timerCallback()
             trace.pushFrame (f.timeSeconds,
                              f.voiced ? dsp::hzToMidi (f.frequencyHz, f.referenceA4) : -1.0f,
                              f.voiced ? dsp::hzToMidi (f.outputHz, f.referenceA4) : -1.0f);
+            vibratoDisplay.pushFrame (f.voiced, f.vibratoCents, f.vibratoRateHz, f.vibratoDepthCents);
             lastFrame = f;
         }
         gotFrames = gotFrames || n > 0;
@@ -187,6 +235,8 @@ void PluginEditor::timerCallback()
         lastFrame.voiced = false; // host stopped calling processBlock: let the meter fade
     else
         trace.repaint();
+    if (currentPage == Page::Vibrato)
+        vibratoDisplay.repaint();
 
     auto newFooter = buildFooterText();
     if (newFooter != footerText)
@@ -221,20 +271,47 @@ void PluginEditor::Content::resized()
         side.removeFromTop (8);
     }
 
-    auto row = kKnobPanel.reduced (8, 10);
-    const int w = row.getWidth() / static_cast<int> (owner.knobs.size());
-    for (auto& k : owner.knobs)
-        k->setBounds (row.removeFromLeft (w).reduced (4, 0));
+    // Tabs
+    auto bar = kTabBar;
+    for (auto& t : owner.tabs)
+        t.setBounds (bar.removeFromLeft (120).reduced (2, 0));
 
-    // Formant row: [caption][toggles][knob][knob]
-    auto formants = kFormantPanel.reduced (16, 10);
-    formants.removeFromLeft (130); // caption, painted
-    auto toggles = formants.removeFromLeft (240).withSizeKeepingCentre (240, 64);
-    for (auto& t : owner.formantToggles)
-        t->setBounds (toggles.removeFromTop (32));
-    formants.removeFromLeft (20);
-    for (auto& k : owner.formantKnobs)
-        k->setBounds (formants.removeFromLeft (w).reduced (4, 0));
+    for (auto& page : owner.pages)
+        page.setBounds (kPagePanel);
+    const auto local = kPagePanel.withZeroOrigin();
+
+    // Page 1: correction knobs
+    {
+        auto row = local.reduced (8, 10);
+        const int w = row.getWidth() / static_cast<int> (owner.knobs.size());
+        for (auto& k : owner.knobs)
+            k->setBounds (row.removeFromLeft (w).reduced (4, 0));
+    }
+
+    // Page 2: [caption][toggles][knob][knob]
+    {
+        auto row = local.reduced (16, 10);
+        row.removeFromLeft (150); // caption, painted by Content
+        auto toggles = row.removeFromLeft (240).withSizeKeepingCentre (240, 64);
+        for (auto& t : owner.formantToggles)
+            t->setBounds (toggles.removeFromTop (32));
+        row.removeFromLeft (20);
+        for (auto& k : owner.formantKnobs)
+            k->setBounds (row.removeFromLeft (100).reduced (4, 0));
+    }
+
+    // Page 3: [display][keep] | [synth knobs x6]
+    {
+        auto row = local.reduced (10, 10);
+        owner.vibratoDisplay.setBounds (row.removeFromLeft (190));
+        row.removeFromLeft (8);
+        owner.vibratoKnobs[0]->setBounds (row.removeFromLeft (84));
+        row.removeFromLeft (14); // divider
+        row.removeFromTop (14);  // "VIBRATO ARTIFICIAL" caption above the group
+        const int w = row.getWidth() / static_cast<int> (owner.vibratoKnobs.size() - 1);
+        for (size_t i = 1; i < owner.vibratoKnobs.size(); ++i)
+            owner.vibratoKnobs[i]->setBounds (row.removeFromLeft (w).reduced (1, 0));
+    }
 }
 
 void PluginEditor::Content::paint (juce::Graphics& g)
@@ -264,11 +341,11 @@ void PluginEditor::Content::paint (juce::Graphics& g)
 
     g.setColour (Palette::textMuted);
     g.setFont (juce::FontOptions (12.0f));
-    g.drawText (u8 ("v") + NOVAPITCH_VERSION_STRING + u8 ("  ·  Fase 4: formantes y HQ"),
+    g.drawText (u8 ("v") + NOVAPITCH_VERSION_STRING + u8 ("  ·  Fase 5: vibrato"),
                 header.withRight (badge.getX() - 14.0f), juce::Justification::centredRight);
 
     // Panel backgrounds -----------------------------------------------------------
-    for (const auto& r : { kSidePanel.toFloat(), kKnobPanel.toFloat(), kFormantPanel.toFloat() })
+    for (const auto& r : { kSidePanel.toFloat(), kPagePanel.toFloat() })
     {
         g.setColour (Palette::panel);
         g.fillRoundedRectangle (r, 10.0f);
@@ -276,14 +353,29 @@ void PluginEditor::Content::paint (juce::Graphics& g)
         g.drawRoundedRectangle (r.reduced (0.5f), 10.0f, 1.0f);
     }
 
-    // Formant panel caption
-    auto caption = kFormantPanel.toFloat().reduced (16.0f, 14.0f).withWidth (130.0f);
-    g.setColour (Palette::textMuted);
-    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    g.drawText (u8 ("FORMANTES"), caption.removeFromTop (18.0f), juce::Justification::centredLeft);
-    g.setFont (juce::FontOptions (11.0f));
-    g.drawFittedText (u8 ("Timbre de la voz, independiente de la afinación"), caption.removeFromTop (44.0f).toNearestInt(),
-                      juce::Justification::topLeft, 3);
+    // Page captions (pages are transparent containers)
+    if (owner.currentPage == Page::Formants)
+    {
+        auto caption = kPagePanel.toFloat().reduced (16.0f, 16.0f).withWidth (150.0f);
+        g.setColour (Palette::textMuted);
+        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.drawText (u8 ("FORMANTES"), caption.removeFromTop (18.0f), juce::Justification::centredLeft);
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawFittedText (u8 ("Timbre de la voz, independiente de la afinación"), caption.removeFromTop (44.0f).toNearestInt(),
+                          juce::Justification::topLeft, 3, 1.0f);
+    }
+    else if (owner.currentPage == Page::Vibrato && owner.vibratoKnobs.size() > 1)
+    {
+        // Divider between "keep natural vibrato" and the artificial vibrato group.
+        const auto first = owner.vibratoKnobs[1]->getBounds().translated (kPagePanel.getX(), kPagePanel.getY());
+        const float x = static_cast<float> (first.getX()) - 8.0f;
+        g.setColour (Palette::panelOutline);
+        g.drawVerticalLine (juce::roundToInt (x), static_cast<float> (kPagePanel.getY() + 14), static_cast<float> (kPagePanel.getBottom() - 14));
+        g.setColour (Palette::textMuted.withAlpha (0.8f));
+        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+        g.drawText (u8 ("VIBRATO ARTIFICIAL"), juce::Rectangle<float> (x + 10.0f, static_cast<float> (kPagePanel.getY() + 8), 200.0f, 12.0f),
+                    juce::Justification::centredLeft);
+    }
 
     // Footer: host diagnostics ------------------------------------------------
     g.setColour (Palette::textMuted.withAlpha (0.8f));

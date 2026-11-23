@@ -8,7 +8,7 @@ Estado por fases (ver especificación original, sección 11).
 | 2 | PitchDetector (YIN/MPM) + perfiles + voicing + medidor de afinación | ✅ Hecho (prueba manual en FL pendiente) |
 | 3 | NoteMapper + CorrectionCurve + PSOLA (Live/Tracking) + transposición + mezcla + latencia | ✅ Hecho (prueba manual en FL pendiente) |
 | 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ✅ Hecho (prueba manual en FL pendiente) |
-| 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ⏳ |
+| 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ✅ Hecho (prueba manual en FL pendiente) |
 | 6 | UI completa + presets + redimensionado + MIDI Learn | ⏳ |
 | 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ⏳ |
 | 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ⏳ |
@@ -46,7 +46,13 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] Sesgo residual de HQ en transposiciones grandes hacia arriba (~+2 ¢ a +12 st). Investigar con signalsmith (peak mapping) o compensar con la frecuencia detectada.
 - [ ] Formant shift en PSOLA con factores > 2 (p. ej. +12 st + carácter): los granos dejan de solaparse y el sonido se vuelve "zumbante"; documentar o limitar en la UI.
 
+### Fase 5
+- [ ] Prueba con voz real en FL: vibrato conservado con corrección rápida, eliminado al 0 %, exagerado al 200 %, vibrato artificial — `docs/TESTING_FL.md`, sección Fase 5.
+- [ ] El analizador necesita ~0,6 s de oscilación para reconocer el vibrato: con velocidad rápida el inicio del vibrato de cada nota se aplana. Opción: ventana adaptativa (más corta para velocidades altas) o detección provisional con menos confianza.
+- [ ] Preset "Hard tune" (Fase 6) con Conservar vibrato = 0 % (el valor por defecto 100 % deja pasar el vibrato natural incluso con velocidad 0).
+
 ### Fase 6
+- [x] Pestañas Corrección / Formantes / Vibrato (adelantado en la Fase 5).
 - [ ] Guardar el tamaño de la ventana del editor en el estado del plugin.
 - [ ] Color de acento configurable desde la UI (la infraestructura `NovaLookAndFeel::setAccent` ya existe).
 

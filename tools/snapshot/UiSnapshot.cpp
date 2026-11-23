@@ -10,6 +10,7 @@
 #include "plugin/PluginProcessor.h"
 #include "signals/SignalGenerators.h"
 
+#include <functional>
 #include <iostream>
 
 using namespace novapitch;
@@ -95,6 +96,45 @@ int main (int argc, char* argv[])
         std::cout << (written ? "wrote " : "FAILED ") << file.getFullPathName() << std::endl;
         ok = ok && written;
     }
+    // One image per tab (found by its text in the component tree), at 100 %.
+    std::function<juce::Button* (juce::Component&, const juce::String&)> findButton =
+        [&] (juce::Component& c, const juce::String& text) -> juce::Button* {
+        if (auto* b = dynamic_cast<juce::Button*> (&c); b != nullptr && b->getButtonText() == text)
+            return b;
+        for (auto* child : c.getChildren())
+            if (auto* found = findButton (*child, text))
+                return found;
+        return nullptr;
+    };
+
+    for (const auto* tab : { "Formantes", "Vibrato" })
+    {
+        if (auto* button = findButton (*editor, juce::String::fromUTF8 (tab)))
+        {
+            button->triggerClick();
+            // Keep audio flowing so the displays are live: a sustained note with a
+            // natural vibrato (5.3 Hz, ±40 c) for the vibrato view.
+            const auto held = novapitch::signals::vibratoSine (261.63 * std::exp2 (-18.0 / 1200.0), 5.3, 40.0, sr, 1.5, 0.4f);
+            for (size_t p = 0; p + 256 <= held.size(); p += 256)
+            {
+                buffer.copyFrom (0, 0, held.data() + p, 256);
+                buffer.copyFrom (1, 0, held.data() + p, 256);
+                proc.processBlock (buffer, midi);
+                if ((p / 256) % 6 == 0)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (30);
+            }
+            const auto file = outDir.getChildFile ("editor-tab-" + juce::String (tab).toLowerCase() + ".png");
+            const bool written = writePng (editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f), file);
+            std::cout << (written ? "wrote " : "FAILED ") << file.getFullPathName() << std::endl;
+            ok = ok && written;
+        }
+        else
+        {
+            std::cout << "tab not found: " << tab << std::endl;
+            ok = false;
+        }
+    }
+
     editor.reset();
     return ok ? 0 : 1;
 }

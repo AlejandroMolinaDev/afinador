@@ -213,3 +213,56 @@ self-test checks that the counter does detect allocations.
 
 HQ scales with the sample rate (STFT); macOS builds use Accelerate (faster). HQ is meant for mixing /
 export, not live monitoring.
+
+---
+
+## Phase 5 — vibrato
+
+### VibratoAnalyzer (own method) — `src/dsp/VibratoAnalyzer.{h,cpp}`
+- Input: detected pitch in cents per analysis frame (~375 frames/s). Every 4 frames (~10 ms) the
+  last **0.6 s** (≥ 2 periods at 3.5 Hz) are linearly detrended (least squares); the normalised
+  autocorrelation of the residual is searched for a local maximum at lags for **3.5–8 Hz**.
+- Accepted as vibrato when r ≥ 0.45, the residual crosses zero ≥ max(3, 0.7 · 2N/lag) times
+  (a note change or a glide doesn't) and the peak depth is **15–150 cents**.
+- Rate: parabolic refinement of the correlation peak. Depth: local trend from the means of the
+  last two full periods (each cancels the oscillation exactly) → RMS·√2 over the last period; exact
+  even during a glide (a plain detrend over 1.8 periods underestimated depth by 14 % at 4 Hz).
+- Split: centre = mean of the last period; vibrato = weight · (pitch − centre), clamped to
+  ±1.5 × depth; weight follows detection with 60 ms attack / 40 ms release.
+- Measured (curve): rate error < 0.1 %, depth error < 0.5 % at 4 / 5.5 / 7 Hz × 25 / 50 / 120 c;
+  through audio + pitch detector (5.5 Hz ±50 c): within ±10 % (spec). Glides, note steps and
+  ±3 c detector jitter are rejected (weight < 0.3).
+- Known limitation: needs ~0.6 s of oscillation before it is recognised; with fast correction the
+  first part of a vibrato is flattened, then preserved (see ROADMAP).
+
+### "Conservar vibrato" (0–200 %, default 100 %)
+NoteMapper and CorrectionCurve work on the **centre**; the oscillation is put back scaled:
+correction += (keep − 1) · vibrato (only while correcting; Ignore notes pass untouched).
+Output ≈ target + keep · vibrato. Vintage forces keep = 0 (classic flat hard tune).
+
+Measured end-to-end (vibrato saw, centre +25 c, 5.5 Hz ±50 c, speed 0):
+
+| keep | PSOLA (Tracking) depth / centre | HQ depth / centre |
+|---|---|---|
+| 0 % | 1.9 c / 0.1 c | 2.2 c / 1.7 c |
+| 100 % | 49.9 c / −0.6 c | 49.2 c / 1.9 c |
+| 200 % | 99.7 c / −1.3 c | 98.3 c / 2.6 c |
+
+### HQ control alignment
+signalsmith applies a transpose factor to the block it is analysing, centred `inputLatency()`
+(~45 ms) in the past, while our ratio describes audio the detector saw ~18 ms ago (half the
+analysis window + median group delay, `PitchDetector::getDetectionLagSamples()`). HqShifter queues
+every control with its input time and applies it **inputLatency − detectorLag** later. Without
+this, vibrato removal in HQ left 46 c of the 50 c (≈ 90° phase error); with it, 2 c. PSOLA needs no
+alignment: its output period is built from the detected period and the ratio, which share the
+same lag.
+
+### VibratoSynth — `src/dsp/VibratoSynth.{h,cpp}`
+Per note (new target note or voiced onset): wait `delay` (0–2000 ms), fade in over 250 ms, then
+depth · sin(2π·rate·t) cents (rate 0.1–10 Hz, depth 0–100 c), with optional ±15 % rate / ±30 %
+depth random walks (~1 Hz, xorshift, deterministic), amplitude modulation up to ±25 % (applied as a
+per-sample ramp after the engine) and formant modulation (formant factor follows the vibrato).
+Measured: depth 29.7 c for 30 c set, flat before the delay.
+
+### CPU after phase 5 (whole chain, 48 kHz, 128-sample blocks)
+Live 1.9 % · Tracking 1.9 % · HQ 5.8 % · Vintage 1.8 % (vibrato analysis is negligible).

@@ -91,6 +91,13 @@ public:
     /** Current analysis window length (analysis-rate samples). */
     int getWindowLength() const noexcept { return frameLength; }
 
+    /** Approximate age of a reported estimate, in input samples: half the
+        analysis window (its centre) plus the median filter's group delay. */
+    int getDetectionLagSamples() const noexcept
+    {
+        return static_cast<int> ((0.5 * frameLength + 0.5 * (config.medianLength - 1) * hopSize) * decimation);
+    }
+
     // Exposed for unit tests --------------------------------------------------
     float getYinThreshold() const noexcept { return yinThreshold; }
     /** Runs the raw (non-smoothed) analysis on an arbitrary analysis-rate buffer

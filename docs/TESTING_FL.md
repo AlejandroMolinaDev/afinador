@@ -102,5 +102,18 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 50 | **Vintage**: efecto hard tune clásico, más seco que Live con velocidad 0 | | |
 | 51 | CPU en HQ a 48 kHz (*Performance monitor*): anotar % (Mac Apple Silicon debería ser menor) | | |
 
+## Fase 5 — Vibrato
+
+> Automático en CI: analizador (velocidad/profundidad ±10 % con audio real a través del detector), glissandos/cambios de nota no confundidos con vibrato, Conservar 0/100/200 % en PSOLA y HQ, Vintage aplana, vibrato artificial con retardo, 0 asignaciones en tiempo real, renders de demo 12–14.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 52 | Voz con vibrato, Velocidad 0, **Conservar 100 %**: notas afinadas y vibrato natural intacto | | |
+| 53 | **Conservar 0 %**: vibrato eliminado (efecto "plano") · **200 %**: vibrato exagerado | | |
+| 54 | Pestaña Vibrato: el visualizador muestra Hz y ± cents del vibrato cantado | | |
+| 55 | **Vibrato artificial** (Profundidad 30 ¢, Retardo 300 ms) en notas largas de una voz plana | | |
+| 56 | Variación, Amplitud y Formante del vibrato artificial: cambios audibles y sin clics | | |
+| 57 | Cambiar de pestaña con la reproducción en marcha: sin cortes de audio | | |
+
 ## Notas / incidencias encontradas
 - 

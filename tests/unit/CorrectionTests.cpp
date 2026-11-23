@@ -408,3 +408,96 @@ TEST_CASE ("Character scales the envelope (+50 % up, -50 % down)", "[formant]")
         CHECK ((character > 0 ? ratio > 1.12 : ratio < 0.88));
     }
 }
+
+//==============================================================================
+namespace
+{
+std::vector<float> vibratoSaw (double f0, double rate, double depthCents, double sr, double seconds)
+{
+    std::vector<float> amps;
+    for (int k = 1; k <= 30; ++k)
+        amps.push_back (0.25f / static_cast<float> (k));
+    return signals::harmonicSweep (sr, seconds, amps, [=] (double t) {
+        return f0 * std::exp2 (depthCents / 1200.0 * std::sin (2.0 * 3.14159265358979 * rate * t));
+    });
+}
+
+struct PitchStats
+{
+    float meanCents = 0.0f;  // mean offset from the reference note
+    float depthCents = 0.0f; // sqrt(2) * standard deviation (peak of a sinusoid)
+};
+
+PitchStats pitchStats (const std::vector<Frame>& frames, double from, double to, float refHz)
+{
+    double sum = 0.0, sq = 0.0;
+    int n = 0;
+    for (const auto& f : frames)
+        if (f.t >= from && f.t < to && f.hz > 0.0f)
+        {
+            const double c = dsp::centsBetween (f.hz, refHz);
+            sum += c;
+            sq += c * c;
+            ++n;
+        }
+    if (n == 0)
+        return {};
+    const double mean = sum / n;
+    return { static_cast<float> (mean), static_cast<float> (std::sqrt (2.0 * std::max (0.0, sq / n - mean * mean))) };
+}
+} // namespace
+
+TEST_CASE ("Natural vibrato is kept (or scaled) while the centre is corrected fast", "[vibrato][correction]")
+{
+    JuceFixture fixture;
+    const int mode = GENERATE (1, 2); // Tracking, HQ
+    const double sr = 48000.0;
+    // A3 + 25 cents, vibrato 5.5 Hz ±50 cents
+    const auto in = vibratoSaw (220.0 * std::exp2 (25.0 / 1200.0), 5.5, 50.0, sr, 2.5);
+
+    for (const float keep : { 100.0f, 0.0f, 200.0f })
+    {
+        NovaPitchProcessor p;
+        setParam (p, ParamIDs::qualityMode, static_cast<float> (mode));
+        setParam (p, ParamIDs::retuneSpeed, 0.0f); // fastest correction
+        setParam (p, ParamIDs::vibratoPreserve, keep);
+        const auto stats = pitchStats (analyse (runProcessor (p, in, sr), sr), 1.0, 2.4, 220.0f);
+        const float expectedDepth = 50.0f * keep / 100.0f;
+        INFO ("mode " << mode << " keep " << keep << " % -> centre " << stats.meanCents << " c, depth " << stats.depthCents << " c");
+        CHECK (std::abs (stats.meanCents) < 5.0f);                        // centre corrected (was +25)
+        if (keep > 0.0f)
+            CHECK (std::abs (stats.depthCents / expectedDepth - 1.0f) < 0.25f);
+        else
+            CHECK (stats.depthCents < 12.0f);                             // vibrato removed
+    }
+}
+
+TEST_CASE ("Vintage mode flattens vibrato like the classic effect", "[vibrato][correction]")
+{
+    JuceFixture fixture;
+    const double sr = 48000.0;
+    NovaPitchProcessor p;
+    setParam (p, ParamIDs::qualityMode, 3.0f);
+    const auto stats = pitchStats (analyse (runProcessor (p, vibratoSaw (220.0, 5.5, 50.0, sr, 2.0), sr), sr), 1.0, 1.9, 220.0f);
+    INFO ("depth " << stats.depthCents);
+    CHECK (stats.depthCents < 12.0f);
+}
+
+TEST_CASE ("Artificial vibrato is added to sustained notes after its delay", "[vibrato][synth]")
+{
+    JuceFixture fixture;
+    const double sr = 48000.0;
+    NovaPitchProcessor p;
+    setParam (p, ParamIDs::vibDepth, 30.0f);
+    setParam (p, ParamIDs::vibRate, 5.0f);
+    setParam (p, ParamIDs::vibDelay, 800.0f);
+    setParam (p, ParamIDs::vibVariation, 0.0f);
+    const auto frames = analyse (runProcessor (p, signals::sawtooth (220.0, sr, 2.5), sr), sr);
+
+    const auto before = pitchStats (frames, 0.3, 0.75, 220.0f);
+    const auto after = pitchStats (frames, 1.4, 2.4, 220.0f);
+    INFO ("before delay depth " << before.depthCents << ", after " << after.depthCents << " (centre " << after.meanCents << ")");
+    CHECK (before.depthCents < 5.0f);
+    CHECK (std::abs (after.depthCents / 30.0f - 1.0f) < 0.25f);
+    CHECK (std::abs (after.meanCents) < 5.0f);
+}

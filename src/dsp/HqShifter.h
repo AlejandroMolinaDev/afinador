@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -41,6 +42,11 @@ public:
 
     void setControl (bool voiced, float f0Hz, float ratio) noexcept;
     void setFormant (float factor, bool preserve) noexcept;
+
+    /** How far in the past (input samples) the control describes: the pitch
+        detector's lag. Controls are applied inputLatency − lead after they
+        arrive, so the ratio lines up with the audio it was computed from. */
+    void setControlLead (int samples) noexcept;
     void setMix (float mix01) noexcept { mixTarget = mix01 < 0.0f ? 0.0f : (mix01 > 1.0f ? 1.0f : mix01); }
 
     void process (float* const* io, int numChannels, int numSamples) noexcept;
@@ -57,7 +63,23 @@ private:
     std::array<std::vector<float>, kMaxChannels> inScratch, outScratch, dryRing;
     int dryMask = 0, dryWrite = 0;
 
-    // Last control values, re-applied after reset()
+    // Control is queued with its input time and applied when the STFT block
+    // being analysed reaches it (inputLatency later): otherwise fast pitch
+    // modulations (vibrato scaling) arrive ~45 ms early and don't cancel.
+    struct Control
+    {
+        int64_t time = 0;
+        float transpose = 1.0f;
+        float formantBase = 0.0f;
+    };
+    static constexpr int kControlQueue = 512;
+    std::array<Control, kControlQueue> controls {};
+    int controlRead = 0, controlCount = 0;
+    int64_t inputTime = 0;
+    int controlDelay = 0, controlLead = 0;
+    void applyDueControls() noexcept;
+
+    // Last applied control values, re-applied after reset()
     float transpose = 1.0f, formantBase = 0.0f, formantFactor = 1.0f;
     bool formantPreserve = true;
 

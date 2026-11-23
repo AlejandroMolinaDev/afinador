@@ -4,9 +4,9 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-![NovaPitch — Fase 4](docs/img/fase4-editor.png)
+![NovaPitch — Fase 5](docs/img/fase5-vibrato.png)
 
-**Estado:** Fase 4 — corrección automática en tiempo real (tonalidad y 14 escalas, velocidad 0–400 ms, tolerancia, sostenido natural, transposición ±12, mezcla) con 4 modos: Live (3 ms), Tracking (10 ms), HQ (100 ms, motor de alta calidad) y Vintage (hard tune clásico); formantes preservados o desplazados ±12 st y control de carácter. Siguiente: vibrato (Fase 5). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 5 — corrección automática en tiempo real (tonalidad y 14 escalas, velocidad 0–400 ms, tolerancia, sostenido natural, transposición ±12, mezcla) con 4 modos: Live (3 ms), Tracking (10 ms), HQ (100 ms) y Vintage; formantes preservados o desplazados ±12 st y carácter; vibrato natural conservado, eliminado o exagerado (0–200 %) con visualizador, y vibrato artificial. Siguiente: UI completa y presets (Fase 6). Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|

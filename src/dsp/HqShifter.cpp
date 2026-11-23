@@ -50,6 +50,7 @@ void HqShifter::prepare (double newSampleRate, int numChannels, int maxBlockSize
 
     configure (impl->stretch, channels, sampleRate);
     latency = impl->stretch.inputLatency() + impl->stretch.outputLatency();
+    controlDelay = std::max (0, impl->stretch.inputLatency() - controlLead);
 
     const int ringSize = nextPow2 (latency + maxBlock + 1);
     for (int ch = 0; ch < kMaxChannels; ++ch)
@@ -74,6 +75,8 @@ void HqShifter::reset() noexcept
     for (auto& r : dryRing)
         std::fill (r.begin(), r.end(), 0.0f);
     dryWrite = 0;
+    controlRead = controlCount = 0;
+    inputTime = 0;
     mix = mixTarget;
     fadeIn = 1.0f;
 }
@@ -81,11 +84,45 @@ void HqShifter::reset() noexcept
 void HqShifter::setControl (bool voiced, float f0Hz, float ratio) noexcept
 {
     const float r = std::isfinite (ratio) ? std::clamp (ratio, 0.25f, 4.0f) : 1.0f;
-    transpose = voiced ? r : 1.0f;
+    Control c;
+    c.time = inputTime;
+    c.transpose = voiced ? r : 1.0f;
     // signalsmith expects the formant base frequency normalised to the sample rate.
-    formantBase = voiced && f0Hz > 0.0f ? static_cast<float> (f0Hz / sampleRate) : 0.0f;
-    impl->stretch.setTransposeFactor (transpose, static_cast<float> (8000.0 / sampleRate));
-    impl->stretch.setFormantBase (formantBase);
+    c.formantBase = voiced && f0Hz > 0.0f ? static_cast<float> (f0Hz / sampleRate) : 0.0f;
+
+    if (controlCount == kControlQueue) // overflow: drop the oldest
+    {
+        controlRead = (controlRead + 1) % kControlQueue;
+        --controlCount;
+    }
+    controls[static_cast<size_t> ((controlRead + controlCount) % kControlQueue)] = c;
+    ++controlCount;
+}
+
+void HqShifter::setControlLead (int samples) noexcept
+{
+    controlLead = std::max (0, samples);
+    controlDelay = std::max (0, impl->stretch.inputLatency() - controlLead);
+}
+
+void HqShifter::applyDueControls() noexcept
+{
+    const int64_t due = inputTime - controlDelay;
+    bool changed = false;
+    while (controlCount > 0 && controls[static_cast<size_t> (controlRead)].time <= due)
+    {
+        const auto& c = controls[static_cast<size_t> (controlRead)];
+        transpose = c.transpose;
+        formantBase = c.formantBase;
+        controlRead = (controlRead + 1) % kControlQueue;
+        --controlCount;
+        changed = true;
+    }
+    if (changed)
+    {
+        impl->stretch.setTransposeFactor (transpose, static_cast<float> (8000.0 / sampleRate));
+        impl->stretch.setFormantBase (formantBase);
+    }
 }
 
 void HqShifter::setFormant (float factor, bool preserve) noexcept
@@ -112,7 +149,9 @@ void HqShifter::process (float* const* io, int numChannels, int numSamples) noex
             out[static_cast<size_t> (ch)] = outScratch[static_cast<size_t> (ch)].data();
         }
 
+        applyDueControls();
         impl->stretch.process (in, n, out, n);
+        inputTime += n;
 
         for (int i = 0; i < n; ++i)
         {

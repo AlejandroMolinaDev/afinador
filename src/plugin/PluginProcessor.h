@@ -7,6 +7,8 @@
 #include "dsp/NoteMapper.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/PsolaShifter.h"
+#include "dsp/VibratoAnalyzer.h"
+#include "dsp/VibratoSynth.h"
 #include "plugin/Parameters.h"
 #include "plugin/PitchFrameFifo.h"
 
@@ -130,6 +132,13 @@ private:
         std::atomic<float>* formantShift = nullptr;
         std::atomic<float>* formantLink = nullptr;
         std::atomic<float>* character = nullptr;
+        std::atomic<float>* vibratoPreserve = nullptr;
+        std::atomic<float>* vibRate = nullptr;
+        std::atomic<float>* vibDepth = nullptr;
+        std::atomic<float>* vibDelay = nullptr;
+        std::atomic<float>* vibVariation = nullptr;
+        std::atomic<float>* vibAmpMod = nullptr;
+        std::atomic<float>* vibFormantMod = nullptr;
     };
 
     /** Reads all parameters and pushes them into the DSP objects (audio thread). */
@@ -153,6 +162,12 @@ private:
     dsp::CorrectionCurve correctionCurve;
     dsp::PsolaShifter shifter;   // Live, Tracking, Vintage
     dsp::HqShifter hqShifter;    // HQ
+    dsp::VibratoAnalyzer vibratoAnalyzer;
+    dsp::VibratoSynth vibratoSynth;
+    int synthNote = -1;
+    bool wasVoiced = false;
+    float vibratoKeep = 1.0f;          // 0..2 ("Conservar vibrato")
+    float outputGain = 1.0f, outputGainTarget = 1.0f; // vibrato amplitude modulation
     bool hqActive = false;
     std::array<int, kNumQualityModes> modeLatency {};
 

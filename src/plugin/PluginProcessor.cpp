@@ -72,6 +72,13 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.formantShift = get (ParamIDs::formantShift);
     params.formantLink = get (ParamIDs::formantLink);
     params.character = get (ParamIDs::character);
+    params.vibratoPreserve = get (ParamIDs::vibratoPreserve);
+    params.vibRate = get (ParamIDs::vibRate);
+    params.vibDepth = get (ParamIDs::vibDepth);
+    params.vibDelay = get (ParamIDs::vibDelay);
+    params.vibVariation = get (ParamIDs::vibVariation);
+    params.vibAmpMod = get (ParamIDs::vibAmpMod);
+    params.vibFormantMod = get (ParamIDs::vibFormantMod);
 
     pitchDetector.setListener (this);
 
@@ -121,6 +128,11 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
 
     pitchDetector.prepare (sampleRate);
     correctionCurve.prepare (pitchDetector.getFrameRate());
+    vibratoAnalyzer.prepare (pitchDetector.getFrameRate());
+    vibratoSynth.prepare (pitchDetector.getFrameRate());
+    synthNote = -1;
+    wasVoiced = false;
+    outputGain = outputGainTarget = 1.0f;
     noteMapper.reset();
     shifter.prepare (sampleRate, latencyForMode (QualityMode::Tracking, sampleRate) + 16);
     hqShifter.prepare (sampleRate, juce::jlimit (1, dsp::HqShifter::kMaxChannels, getTotalNumInputChannels()), kControlBlock);
@@ -150,6 +162,11 @@ void NovaPitchProcessor::reset()
     noteMapper.reset();
     shifter.reset();
     hqShifter.reset();
+    vibratoAnalyzer.reset();
+    vibratoSynth.reset();
+    synthNote = -1;
+    wasVoiced = false;
+    outputGain = outputGainTarget = 1.0f;
 }
 
 void NovaPitchProcessor::timerCallback()
@@ -165,6 +182,8 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
     pitchDetector.setProfile (dsp::inputProfileFromIndex (choiceIndex (params.inputProfile)));
     pitchDetector.setSensitivity (params.sensitivity->load (std::memory_order_relaxed));
     correctionCurve.setFrameRate (pitchDetector.getFrameRate());
+    vibratoAnalyzer.setFrameRate (pitchDetector.getFrameRate());
+    vibratoSynth.setFrameRate (pitchDetector.getFrameRate());
 
     noteMapper.setKeyAndScale (choiceIndex (params.key), dsp::scaleTypeFromIndex (choiceIndex (params.scale)));
     for (int pc = 0; pc < 12; ++pc)
@@ -188,6 +207,17 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
     }
     correctionCurve.setSettings (s);
 
+    // Vibrato: Vintage flattens it like the classic effect.
+    vibratoKeep = blockMode == QualityMode::Vintage ? 0.0f : params.vibratoPreserve->load (std::memory_order_relaxed) / 100.0f;
+    dsp::VibratoSynth::Settings vs;
+    vs.rateHz = params.vibRate->load (std::memory_order_relaxed);
+    vs.depthCents = params.vibDepth->load (std::memory_order_relaxed);
+    vs.delayMs = params.vibDelay->load (std::memory_order_relaxed);
+    vs.variation = params.vibVariation->load (std::memory_order_relaxed) / 100.0f;
+    vs.amplitudeMod = params.vibAmpMod->load (std::memory_order_relaxed) / 100.0f;
+    vs.formantMod = params.vibFormantMod->load (std::memory_order_relaxed) / 100.0f;
+    vibratoSynth.setSettings (vs);
+
     // Formants: shift x character (x transposition when linked). With "preserve"
     // off (and always in Vintage) the formants also follow the pitch ratio.
     formantPreserve = params.formantPreserve->load (std::memory_order_relaxed) > 0.5f && blockMode != QualityMode::Vintage;
@@ -196,6 +226,7 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
                           * (1.0f + params.character->load (std::memory_order_relaxed) / 100.0f)
                           * (formantPreserve && formantLink ? std::exp2 (transposeSemitones / 12.0f) : 1.0f);
     hqShifter.setFormant (formantStaticFactor, formantPreserve);
+    hqShifter.setControlLead (pitchDetector.getDetectionLagSamples());
     shifter.setGrainScale (blockMode == QualityMode::Vintage ? kVintageGrainScale : 1.0f);
 
     const float mixValue = params.mix->load (std::memory_order_relaxed) / 100.0f;
@@ -225,24 +256,41 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     const bool voiced = e.voiced && e.frequencyHz > 0.0f;
     const float detectedMidi = voiced ? dsp::hzToMidi (e.frequencyHz, a4Hz) : 0.0f;
 
+    // Vibrato split: correction works on the centre; the oscillation is put back
+    // scaled by "Conservar vibrato" (0 = remove, 1 = original, 2 = double).
+    const auto vib = vibratoAnalyzer.process (voiced, detectedMidi * 100.0f);
+    const float centreMidi = voiced ? vib.centreCents / 100.0f : 0.0f;
+
     dsp::NoteTarget target;
     if (voiced)
-        target = noteMapper.map (detectedMidi);
+        target = noteMapper.map (centreMidi);
     else
         noteMapper.reset();
 
-    const float correction = correctionCurve.process (voiced, detectedMidi, target);
-    const float totalCents = correction + 100.0f * transposeSemitones;
+    const float correction = correctionCurve.process (voiced, centreMidi, target);
+    const bool correcting = target.hasTarget && target.correct;
+    const float vibratoScale = correcting ? (vibratoKeep - 1.0f) * vib.vibratoCents : 0.0f;
+
+    // Artificial vibrato on sustained notes (restarts on every new note).
+    const bool noteStarted = voiced && (! wasVoiced || target.note != synthNote);
+    synthNote = voiced ? target.note : -1;
+    wasVoiced = voiced;
+    const auto synth = vibratoSynth.process (voiced, noteStarted);
+    outputGainTarget = synth.gain;
+
+    const float totalCents = correction + vibratoScale + synth.pitchCents + 100.0f * transposeSemitones;
     const float ratio = std::exp2 (totalCents / 1200.0f);
+    const float formant = formantStaticFactor * synth.formantFactor;
     if (hqActive)
     {
         hqShifter.setControl (voiced, e.frequencyHz, ratio);
+        hqShifter.setFormant (formant, formantPreserve);
     }
     else
     {
         const float period = voiced ? static_cast<float> (inputSampleRate / e.frequencyHz) : 0.0f;
         shifter.setControl (voiced, period, ratio);
-        shifter.setFormantFactor (formantPreserve ? formantStaticFactor : formantStaticFactor * ratio);
+        shifter.setFormantFactor (formantPreserve ? formant : formant * ratio);
     }
 
     PitchFrame frame;
@@ -255,7 +303,10 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     frame.confidence = e.confidence;
     frame.rmsDb = e.rmsDb;
     frame.voiced = voiced;
-    frame.correcting = target.hasTarget && target.correct;
+    frame.correcting = correcting;
+    frame.vibratoRateHz = vib.rateHz;
+    frame.vibratoDepthCents = vib.depthCents;
+    frame.vibratoCents = vib.vibratoCents;
     pitchFifo.push (frame);
 }
 
@@ -331,6 +382,29 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
             hqShifter.process (channels.data(), numIn, n);
         else
             shifter.process (channels.data(), numIn, monoScratch.data(), n);
+
+        // Vibrato amplitude modulation: linear ramp to the frame's gain (no zipper).
+        const float target = bypassed ? 1.0f : outputGainTarget;
+        if (! juce::exactlyEqual (target, outputGain))
+        {
+            const float step = (target - outputGain) / static_cast<float> (n);
+            for (int ch = 0; ch < numIn; ++ch)
+            {
+                float g = outputGain;
+                auto* d = channels[static_cast<size_t> (ch)];
+                for (int i = 0; i < n; ++i)
+                {
+                    g += step;
+                    d[i] *= g;
+                }
+            }
+            outputGain = target;
+        }
+        else if (! juce::exactlyEqual (outputGain, 1.0f))
+        {
+            for (int ch = 0; ch < numIn; ++ch)
+                juce::FloatVectorOperations::multiply (channels[static_cast<size_t> (ch)], outputGain, n);
+        }
     }
 
     // Mono -> Stereo: duplicate; any other extra output channel is cleared.

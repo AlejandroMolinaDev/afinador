@@ -20,6 +20,9 @@ struct PitchFrame
     float rmsDb = -120.0f;
     bool voiced = false;
     bool correcting = false;     ///< false for "Ignore" notes / no target
+    float vibratoRateHz = 0.0f;  ///< detected vibrato (0 = none)
+    float vibratoDepthCents = 0.0f;
+    float vibratoCents = 0.0f;   ///< current vibrato offset (for the visualiser)
 };
 
 /** Single-producer (audio thread) / single-consumer (message thread) lock-free

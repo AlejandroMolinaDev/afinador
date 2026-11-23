@@ -38,6 +38,13 @@ inline constexpr const char* formantPreserve = "formantPreserve"; // phase 4
 inline constexpr const char* formantShift = "formantShift";
 inline constexpr const char* formantLink = "formantLink";
 inline constexpr const char* character = "character";
+inline constexpr const char* vibratoPreserve = "vibratoPreserve"; // phase 5
+inline constexpr const char* vibRate = "vibRate";
+inline constexpr const char* vibDepth = "vibDepth";
+inline constexpr const char* vibDelay = "vibDelay";
+inline constexpr const char* vibVariation = "vibVariation";
+inline constexpr const char* vibAmpMod = "vibAmpMod";
+inline constexpr const char* vibFormantMod = "vibFormantMod";
 
 /** "noteState0" (C) .. "noteState11" (B). */
 juce::String noteState (int pitchClass);

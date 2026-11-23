@@ -8,6 +8,7 @@
 #include "ui/components/LabeledControls.h"
 #include "ui/components/PitchTrace.h"
 #include "ui/components/TuningMeter.h"
+#include "ui/components/VibratoDisplay.h"
 
 #include <array>
 #include <memory>
@@ -32,7 +33,7 @@ public:
     void resized() override;
 
     static constexpr int kBaseWidth = 760;
-    static constexpr int kBaseHeight = 734;
+    static constexpr int kBaseHeight = 640;
 
 private:
     class Content final : public juce::Component
@@ -46,8 +47,11 @@ private:
         PluginEditor& owner;
     };
 
+    enum class Page { Correction = 0, Formants = 1, Vibrato = 2 };
+
     void timerCallback() override;
     juce::String buildFooterText() const;
+    void showPage (Page);
 
     NovaPitchProcessor& processor;
     NovaLookAndFeel lookAndFeel;
@@ -61,6 +65,13 @@ private:
     std::vector<std::unique_ptr<LabeledKnob>> knobs;   // speed, tolerance, hold, transpose, mix, sensitivity, A4
     std::vector<std::unique_ptr<LabeledToggle>> formantToggles; // preserve, link
     std::vector<std::unique_ptr<LabeledKnob>> formantKnobs;     // shift, character
+    std::vector<std::unique_ptr<LabeledKnob>> vibratoKnobs;     // keep, rate, depth, delay, variation, amp, formant
+    VibratoDisplay vibratoDisplay;
+
+    // Tabs: each page is a transparent container placed over the page panel.
+    std::array<juce::TextButton, 3> tabs;
+    std::array<juce::Component, 3> pages;
+    Page currentPage = Page::Correction;
 
     juce::String hostDescription;
     bool hostIsFlStudio = false;

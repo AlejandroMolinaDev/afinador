@@ -117,6 +117,10 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PsolaShifter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HqShifter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HqShifter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoAnalyzer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoAnalyzer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoSynth.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/VibratoSynth.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp signalsmith-stretch)
@@ -140,6 +144,8 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PitchTrace.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PitchTrace.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/LabeledControls.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/VibratoDisplay.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/VibratoDisplay.h
 )
 
 target_include_directories(NovaPitchCore INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)

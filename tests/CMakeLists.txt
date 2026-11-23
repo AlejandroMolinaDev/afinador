@@ -9,6 +9,7 @@ add_executable(NovaPitchTests
     unit/PsolaShifterTests.cpp
     unit/CorrectionTests.cpp
     unit/RealtimeSafetyTests.cpp
+    unit/VibratoTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )

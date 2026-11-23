@@ -144,6 +144,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (makeFloat (ParamIDs::character, "Carácter", -50.0f, 50.0f, 0.1f, 0.0f, "%",
                            [] (float v) { return (v > 0.5f ? "+" : "") + juce::String (juce::roundToInt (v)) + " %"; }));
 
+    // ---- Phase 5 ------------------------------------------------------------
+    auto percent = [] (float v) { return juce::String (juce::roundToInt (v)) + " %"; };
+    layout.add (makeFloat (ParamIDs::vibratoPreserve, "Conservar vibrato", 0.0f, 200.0f, 0.1f, 100.0f, "%", percent));
+    layout.add (makeFloat (ParamIDs::vibRate, "Vibrato: velocidad", 0.1f, 10.0f, 0.01f, 5.5f, "Hz",
+                           [] (float v) { return juce::String (v, 2) + " Hz"; }, 3.0f));
+    layout.add (makeFloat (ParamIDs::vibDepth, "Vibrato: profundidad", 0.0f, 100.0f, 0.1f, 0.0f, "cents",
+                           [] (float v) { return juce::String (juce::roundToInt (v)) + u8 (" ¢"); }));
+    layout.add (makeFloat (ParamIDs::vibDelay, "Vibrato: retardo", 0.0f, 2000.0f, 1.0f, 300.0f, "ms",
+                           [] (float v) { return juce::String (juce::roundToInt (v)) + " ms"; }, 400.0f));
+    layout.add (makeFloat (ParamIDs::vibVariation, u8 ("Vibrato: variación").toRawUTF8(), 0.0f, 100.0f, 0.1f, 20.0f, "%", percent));
+    layout.add (makeFloat (ParamIDs::vibAmpMod, "Vibrato: amplitud", 0.0f, 100.0f, 0.1f, 0.0f, "%", percent));
+    layout.add (makeFloat (ParamIDs::vibFormantMod, "Vibrato: formante", 0.0f, 100.0f, 0.1f, 0.0f, "%", percent));
+
     return layout;
 }
 
