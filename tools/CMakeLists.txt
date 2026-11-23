@@ -17,6 +17,10 @@ target_link_libraries(NovaPitchHostTest PRIVATE
     juce::juce_gui_basics
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
+if(APPLE)
+    # AU hosting (generic editor view) needs CoreAudioKit, which JUCE doesn't add to console apps.
+    target_link_libraries(NovaPitchHostTest PRIVATE "-framework CoreAudioKit")
+endif()
 novapitch_apply_compiler_settings(NovaPitchHostTest)
 
 # Shared settings for tools that compile the plugin sources directly.

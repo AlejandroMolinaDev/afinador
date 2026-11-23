@@ -134,7 +134,6 @@ target_compile_definitions(NovaPitchCore
         # FL Studio's parameter / automation browser). MIDI notes still arrive as
         # VST3 note events; CC control in FL uses "Link to controller".
         JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_REPORT_APP_USAGE=0
         JUCE_WIN_PER_MONITOR_DPI_AWARE=1   # crisp UI on HiDPI Windows; verify in FL (docs/TESTING_FL.md)
         JUCE_STRICT_REFCOUNTEDPOINTER=1
