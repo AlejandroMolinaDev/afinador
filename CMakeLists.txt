@@ -124,6 +124,7 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HarmonyEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HarmonyEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/MidiNoteState.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/KeyDetector.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/graph/CorrectionTrack.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -143,6 +144,7 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PresetManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/MidiLearn.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/MidiLearn.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/InstanceRegistry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphRuntime.h

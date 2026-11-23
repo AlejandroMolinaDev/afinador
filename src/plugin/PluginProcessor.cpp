@@ -103,6 +103,7 @@ NovaPitchProcessor::NovaPitchProcessor()
 
     graphModel.onChanged = [this] { publishGraphTrack(); };
     graphModel.bind (apvts.state);
+    InstanceRegistry::getInstance().add (this);
 
     // Report the default mode's latency from the start (hosts query it before prepare).
     setLatencySamples (latencyForMode (kDefaultQualityMode, 44100.0));
@@ -111,6 +112,7 @@ NovaPitchProcessor::NovaPitchProcessor()
 
 NovaPitchProcessor::~NovaPitchProcessor()
 {
+    InstanceRegistry::getInstance().remove (this);
     stopTimer();
 }
 
@@ -212,6 +214,109 @@ void NovaPitchProcessor::timerCallback()
 
     applyLearnedScale();
     processGraphMessages();
+    applyPendingSync();
+    if (keyListening.load() && keyVoicedSeconds.load() >= keyListenTarget)
+        finishKeyListening (true);
+}
+
+//==============================================================================
+void NovaPitchProcessor::setParameterValue (const juce::String& id, float value)
+{
+    if (auto* p = apvts.getParameter (id))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->convertTo0to1 (value));
+        p->endChangeGesture();
+    }
+}
+
+void NovaPitchProcessor::startKeyListening (double voicedSeconds)
+{
+    keyListening.store (false);
+    for (auto& bin : keyChroma)
+        bin.store (0.0f);
+    keyVoicedSeconds.store (0.0);
+    keyListenTarget = std::max (1.0, voicedSeconds);
+    keyListening.store (true);
+}
+
+dsp::KeyDetector::Result NovaPitchProcessor::finishKeyListening (bool apply)
+{
+    keyListening.store (false);
+    dsp::KeyDetector::Chroma chroma {};
+    for (size_t i = 0; i < 12; ++i)
+        chroma[i] = keyChroma[i].load();
+    auto result = dsp::KeyDetector::estimate (chroma);
+    result.valid = result.valid && keyVoicedSeconds.load() >= 1.0; // too little material otherwise
+    lastKeyResult = result;
+    ++keyResultGeneration;
+    if (apply && result.valid)
+        applyKey (result);
+    return result;
+}
+
+dsp::KeyDetector::Result NovaPitchProcessor::detectKeyFromCapture (bool apply)
+{
+    dsp::KeyDetector detector;
+    double voiced = 0.0;
+    const auto& frames = graphModel.getCaptured();
+    for (size_t i = 0; i < frames.size(); ++i)
+    {
+        const auto& f = frames[i];
+        if (f.midi < 0.0f)
+            continue;
+        const double next = i + 1 < frames.size() ? frames[i + 1].time : f.time + GraphModel::kFrameSeconds;
+        const auto seconds = static_cast<float> (std::clamp (next - f.time, 0.0, 0.05));
+        detector.add (f.midi, dsp::KeyDetector::frameWeight (f.midi, seconds, f.rmsDb));
+        voiced += seconds;
+    }
+    auto result = detector.estimate();
+    result.valid = result.valid && voiced >= 1.0;
+    lastKeyResult = result;
+    ++keyResultGeneration;
+    if (apply && result.valid)
+        applyKey (result);
+    return result;
+}
+
+void NovaPitchProcessor::applyKey (const dsp::KeyDetector::Result& r)
+{
+    setParameterValue (ParamIDs::key, static_cast<float> (r.key));
+    setParameterValue (ParamIDs::scale, static_cast<float> (r.scale()));
+}
+
+int NovaPitchProcessor::syncToOtherInstances()
+{
+    SongSettings s;
+    s.key = choiceIndex (params.key);
+    s.scale = choiceIndex (params.scale);
+    for (size_t pc = 0; pc < 12; ++pc)
+        s.noteStates[pc] = choiceIndex (params.noteStates[pc]);
+    s.referenceA4 = params.referenceA4->load();
+    return InstanceRegistry::getInstance().broadcast (s, this);
+}
+
+void NovaPitchProcessor::receiveSongSettings (const SongSettings& s)
+{
+    const juce::SpinLock::ScopedLockType lock (syncLock);
+    pendingSync = s;
+    hasPendingSync.store (true);
+}
+
+void NovaPitchProcessor::applyPendingSync()
+{
+    if (! hasPendingSync.exchange (false))
+        return;
+    SongSettings s;
+    {
+        const juce::SpinLock::ScopedLockType lock (syncLock);
+        s = pendingSync;
+    }
+    setParameterValue (ParamIDs::key, static_cast<float> (s.key));
+    setParameterValue (ParamIDs::scale, static_cast<float> (s.scale));
+    for (int pc = 0; pc < 12; ++pc)
+        setParameterValue (ParamIDs::noteState (pc), static_cast<float> (s.noteStates[static_cast<size_t> (pc)]));
+    setParameterValue (ParamIDs::referenceA4, s.referenceA4);
 }
 
 //==============================================================================
@@ -431,6 +536,16 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
 
     std::array<int, 16> held {};
     const int numHeld = midiNotes.heldNotes (held);
+
+    // Key detection: accumulate the chromagram while listening (single writer).
+    if (voiced && keyListening.load (std::memory_order_relaxed))
+    {
+        const auto frameSeconds = static_cast<float> (1.0 / pitchDetector.getFrameRate());
+        const float w = dsp::KeyDetector::frameWeight (detectedMidi, frameSeconds, e.rmsDb);
+        auto& bin = keyChroma[static_cast<size_t> (((static_cast<int> (std::lround (detectedMidi)) % 12) + 12) % 12)];
+        bin.store (bin.load (std::memory_order_relaxed) + w, std::memory_order_relaxed);
+        keyVoicedSeconds.store (keyVoicedSeconds.load (std::memory_order_relaxed) + frameSeconds, std::memory_order_relaxed);
+    }
 
     // Host-timeline time of the analysed audio (capture and graphical playback).
     const double frameTime = chunkHostTime

@@ -277,6 +277,25 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     graphEditor = std::make_unique<GraphEditor> (p);
     content.addChildComponent (*graphEditor);
 
+    // Key detection + instance sync (over the Tonalidad / Escala labels) -------------
+    listenButton.setButtonText (u8 ("Escuchar"));
+    listenButton.setTooltip (u8 ("Detecta la tonalidad escuchando la voz unos segundos (o desde la captura del modo "
+                                 "gráfico) y ajusta Tonalidad y Escala."));
+    listenButton.onClick = [this] { showListenMenu(); };
+    syncButton.setButtonText (u8 ("Sincronizar"));
+    syncButton.onClick = [this] {
+        const int n = processor.syncToOtherInstances();
+        showStatus (n > 0 ? u8 ("Tonalidad, escala, notas y A4 enviadas a ") + juce::String (n)
+                                + (n == 1 ? u8 (" instancia más") : u8 (" instancias más"))
+                          : u8 ("No hay otras instancias de NovaPitch en este proceso (¿plugin en modo «bridged»?)"));
+    };
+    for (auto* b : { &listenButton, &syncButton })
+    {
+        b->setColour (juce::TextButton::buttonColourId, Palette::panelRaised);
+        b->setColour (juce::TextButton::textColourOffId, Palette::textPrimary.withAlpha (0.85f));
+        content.addAndMakeVisible (b);
+    }
+
     // MIDI Learn on every knob ---------------------------------------------------
     for (auto* k : allKnobs())
         k->onContextMenu = [this] (LabeledKnob& knob) { showKnobMenu (knob); };
@@ -486,6 +505,76 @@ void PluginEditor::setGraphMode (bool on)
     updateView();
 }
 
+void PluginEditor::showStatus (const juce::String& text)
+{
+    statusText = text;
+    statusUntil = juce::Time::getMillisecondCounter() + 7000;
+    content.repaint (kFooterBounds);
+}
+
+void PluginEditor::showListenMenu()
+{
+    juce::PopupMenu menu;
+    if (processor.isKeyListening())
+    {
+        menu.addItem (1, u8 ("Detener y aplicar"));
+        menu.addItem (2, u8 ("Cancelar"));
+    }
+    else
+    {
+        menu.addSectionHeader (u8 ("Detectar la tonalidad"));
+        menu.addItem (10, u8 ("Escuchar 10 s de voz"));
+        menu.addItem (20, u8 ("Escuchar 20 s de voz"));
+        menu.addItem (30, u8 ("Escuchar 30 s de voz"));
+        menu.addSeparator();
+        menu.addItem (100, u8 ("Desde la captura del modo gráfico"), ! processor.getGraphModel().getCaptured().empty());
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (listenButton), [this] (int result) {
+        if (result == 1)
+            processor.finishKeyListening (true);
+        else if (result == 2)
+            processor.finishKeyListening (false);
+        else if (result == 10 || result == 20 || result == 30)
+        {
+            processor.startKeyListening (static_cast<double> (result));
+            showStatus (u8 ("Escuchando: canta o reproduce la voz (cuentan solo los tramos con voz)…"));
+        }
+        else if (result == 100)
+            processor.detectKeyFromCapture (true);
+        updateKeyControls();
+    });
+}
+
+void PluginEditor::updateKeyControls()
+{
+    if (processor.isKeyListening())
+        listenButton.setButtonText (u8 ("Escuchando ")
+                                    + juce::String (juce::jmin (processor.getKeyListenSeconds(), processor.getKeyListenTarget()), 0)
+                                    + "/" + juce::String (processor.getKeyListenTarget(), 0) + " s");
+    else
+        listenButton.setButtonText (u8 ("Escuchar"));
+
+    if (processor.getKeyResultGeneration() != shownKeyGeneration)
+    {
+        shownKeyGeneration = processor.getKeyResultGeneration();
+        const auto r = processor.getLastKeyResult();
+        if (r.valid)
+            showStatus (u8 ("Tonalidad detectada: ") + u8 (dsp::kKeyNames[static_cast<size_t> (r.key)]) + " "
+                        + u8 (dsp::kScaleNames[static_cast<size_t> (r.scale())]).toLowerCase() + u8 (" · confianza ")
+                        + juce::String (juce::roundToInt (r.confidence * 100.0f)) + " %");
+        else
+            showStatus (u8 ("No hubo suficiente voz para detectar la tonalidad."));
+    }
+
+    const int instances = NovaPitchProcessor::getNumInstancesInProcess();
+    syncButton.setEnabled (instances > 1);
+    syncButton.setTooltip (instances > 1
+                               ? u8 ("Envía tonalidad, escala, estados de nota y A4 a las otras ") + juce::String (instances - 1)
+                                     + u8 (" instancias de NovaPitch del proyecto.")
+                               : u8 ("No hay otras instancias de NovaPitch en este proceso. Si FL abre el plugin en modo "
+                                     "«bridged» (proceso aparte), la sincronización no está disponible."));
+}
+
 void PluginEditor::updateView()
 {
     const bool wantGraph = processor.getValueTreeState().getRawParameterValue (ParamIDs::graphMode)->load() > 0.5f;
@@ -499,6 +588,8 @@ void PluginEditor::updateView()
     trace.setVisible (! graphView);
     for (auto& c : combos)
         c->setVisible (! graphView);
+    listenButton.setVisible (! graphView);
+    syncButton.setVisible (! graphView);
     for (auto& t : tabs)
         t.setVisible (! graphView);
     if (graphView)
@@ -550,6 +641,7 @@ juce::String PluginEditor::buildFooterText() const
 void PluginEditor::timerCallback()
 {
     updateView(); // follows host automation of "Modo gráfico"
+    updateKeyControls();
     if (graphView)
         graphEditor->refresh();
 
@@ -604,6 +696,11 @@ void PluginEditor::timerCallback()
         || processor.getMidiLearn().getLearningParam() != shownLearning)
         refreshMidiLabels();
 
+    if (statusText.isNotEmpty() && juce::Time::getMillisecondCounter() >= statusUntil)
+    {
+        statusText = {};
+        content.repaint (kFooterBounds);
+    }
     auto newFooter = buildFooterText();
     if (newFooter != footerText)
     {
@@ -653,6 +750,11 @@ void PluginEditor::Content::resized()
     owner.autoButton.setBounds (modeSwitch.removeFromLeft (modeSwitch.getWidth() / 2));
     owner.graphButton.setBounds (modeSwitch);
     owner.graphEditor->setBounds (kGraphBounds);
+    if (owner.combos.size() >= 2) // small buttons on the right of the Tonalidad / Escala labels
+    {
+        owner.listenButton.setBounds (owner.combos[0]->getBounds().withHeight (17).removeFromRight (96).translated (0, -2));
+        owner.syncButton.setBounds (owner.combos[1]->getBounds().withHeight (17).removeFromRight (96).translated (0, -2));
+    }
 
     // Tabs
     auto bar = kTabBar;
@@ -767,9 +869,7 @@ void PluginEditor::Content::paint (juce::Graphics& g)
 
     if (owner.graphView)
     {
-        g.setColour (Palette::textMuted.withAlpha (0.8f));
-        g.setFont (juce::FontOptions (11.0f));
-        g.drawText (owner.footerText, kFooterBounds.toFloat(), juce::Justification::centredLeft);
+        owner.paintFooter (g);
         return; // the graphical editor paints itself
     }
 
@@ -827,10 +927,21 @@ void PluginEditor::Content::paint (juce::Graphics& g)
                     juce::Justification::centredLeft);
     }
 
-    // Footer: host diagnostics ------------------------------------------------
-    g.setColour (Palette::textMuted.withAlpha (0.8f));
+    owner.paintFooter (g);
+}
+
+void PluginEditor::paintFooter (juce::Graphics& g) const
+{
+    // Footer: transient status (key detected, sync) or host diagnostics
     g.setFont (juce::FontOptions (11.0f));
-    g.drawText (owner.footerText, kFooterBounds.toFloat(), juce::Justification::centredLeft);
+    if (statusText.isNotEmpty() && juce::Time::getMillisecondCounter() < statusUntil)
+    {
+        g.setColour (lookAndFeel.getAccent().brighter (0.2f));
+        g.drawText (statusText, kFooterBounds.toFloat(), juce::Justification::centredLeft);
+        return;
+    }
+    g.setColour (Palette::textMuted.withAlpha (0.8f));
+    g.drawText (footerText, kFooterBounds.toFloat(), juce::Justification::centredLeft);
 }
 
 } // namespace novapitch

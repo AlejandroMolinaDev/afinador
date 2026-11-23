@@ -5,12 +5,14 @@
 #include "dsp/CorrectionCurve.h"
 #include "dsp/HarmonyEngine.h"
 #include "dsp/HqShifter.h"
+#include "dsp/KeyDetector.h"
 #include "dsp/MidiNoteState.h"
 #include "dsp/NoteMapper.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/PsolaShifter.h"
 #include "dsp/VibratoAnalyzer.h"
 #include "dsp/VibratoSynth.h"
+#include "plugin/InstanceRegistry.h"
 #include "plugin/MidiLearn.h"
 #include "plugin/Parameters.h"
 #include "plugin/PitchFrameFifo.h"
@@ -57,7 +59,8 @@ struct HostDiagnostics
               -> ratio -> PsolaShifter (all channels, same grains) -> dry/wet -> output */
 class NovaPitchProcessor final : public juce::AudioProcessor,
                                  private dsp::PitchDetector::Listener,
-                                 private juce::Timer
+                                 private juce::Timer,
+                                 private InstanceRegistry::Member
                               #if HAS_CLAP_JUCE_EXTENSIONS
                                , public clap_juce_extensions::clap_properties
                               #endif
@@ -143,6 +146,32 @@ public:
     /** Replaces the graph objects with notes from the captured curve, using the
         current key / scale / note states (one undo step). Returns notes created. */
     int importGraphFromAuto();
+    //==========================================================================
+    // Key detection (phase 9): f0 chromagram + Krumhansl–Schmuckler profiles.
+    /** Starts listening to the input for `voicedSeconds` of sung material (message thread). */
+    void startKeyListening (double voicedSeconds);
+    /** Stops listening; with `apply`, the detected key/scale is written to the parameters. */
+    dsp::KeyDetector::Result finishKeyListening (bool apply);
+    bool isKeyListening() const noexcept { return keyListening.load(); }
+    /** Voiced seconds heard so far and the target. */
+    double getKeyListenSeconds() const noexcept { return keyVoicedSeconds.load(); }
+    double getKeyListenTarget() const noexcept { return keyListenTarget; }
+    /** Key of the graphical mode's captured curve (message thread). */
+    dsp::KeyDetector::Result detectKeyFromCapture (bool apply);
+    /** Last detection result and a counter that changes with every new result (UI). */
+    dsp::KeyDetector::Result getLastKeyResult() const noexcept { return lastKeyResult; }
+    int getKeyResultGeneration() const noexcept { return keyResultGeneration; }
+    /** Writes a key (tonic + Major/Natural minor) into the key and scale parameters. */
+    void applyKey (const dsp::KeyDetector::Result&);
+
+    // Instance sync (phase 9) ---------------------------------------------------
+    /** Sends this instance's key, scale, note states and A4 to the other instances
+        in this process. Returns how many received them. */
+    int syncToOtherInstances();
+    static int getNumInstancesInProcess() { return InstanceRegistry::getInstance().size(); }
+    /** Applies settings received from another instance (message thread; called by the timer). */
+    void applyPendingSync();
+
     /** Message-thread housekeeping of the graphical mode: drains the capture
         FIFO, commits capture passes, frees retired tracks. Called by the timer
         (public so tests can run it without a message loop). */
@@ -235,6 +264,20 @@ private:
     MidiLearn midiLearn { *this };
     std::unique_ptr<PresetManager> presetManager;
     std::atomic<int> midiMappingGeneration { 0 };
+
+    // Key detection / instance sync ---------------------------------------------
+    void receiveSongSettings (const SongSettings&) override;
+    void setParameterValue (const juce::String& id, float value);
+
+    std::array<std::atomic<float>, 12> keyChroma {};   // written by the audio thread while listening
+    std::atomic<double> keyVoicedSeconds { 0.0 };
+    std::atomic<bool> keyListening { false };
+    double keyListenTarget = 10.0;
+    dsp::KeyDetector::Result lastKeyResult;
+    int keyResultGeneration = 0;
+    juce::SpinLock syncLock;
+    SongSettings pendingSync;
+    std::atomic<bool> hasPendingSync { false };
 
     // Graphical mode ------------------------------------------------------------
     void readPlayHead() noexcept;

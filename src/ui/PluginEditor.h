@@ -58,6 +58,12 @@ private:
     void updateView();
     void setGraphMode (bool);
 
+    // Key detection / instance sync (phase 9)
+    void showListenMenu();
+    void showStatus (const juce::String&);
+    void updateKeyControls();
+    void paintFooter (juce::Graphics&) const;
+
     // Presets / settings
     void refreshPresetBox();
     void showSaveDialog();
@@ -118,6 +124,11 @@ private:
     juce::TextButton autoButton, graphButton;
     std::unique_ptr<GraphEditor> graphEditor;
     bool graphView = false;
+
+    juce::TextButton listenButton, syncButton;
+    juce::String statusText;
+    juce::uint32 statusUntil = 0;
+    int shownKeyGeneration = 0;
 
     juce::String hostDescription;
     bool hostIsFlStudio = false;
