@@ -2,18 +2,25 @@
 
 Technical notes, measurements and design decisions for the DSP modules.
 
-## Latency per mode
+## Latency per mode (phase 3, measured = reported)
 
-| Mode | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz |
-|---|---|---|---|---|
-| Passthrough (phases 1–2) | 0 | 0 | 0 | 0 |
-| Live (PSOLA) | phase 3 | | | |
-| Tracking (PSOLA) | phase 3 | | | |
-| HQ | phase 4 | | | |
-| Vintage | phase 4 | | | |
+| Mode | Engine | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz |
+|---|---|---|---|---|---|
+| Live | PSOLA, 3 ms | 132 (3.0 ms) | 144 (3.0 ms) | 288 (3.0 ms) | 576 (3.0 ms) |
+| Tracking (default) | PSOLA, 10 ms | 441 (10 ms) | 480 (10 ms) | 960 (10 ms) | 1920 (10 ms) |
+| HQ | phase 4 — uses Tracking for now | 441 | 480 | 960 | 1920 |
+| Vintage | phase 4 — Live engine + hard settings for now | 132 | 144 | 288 | 576 |
 
-Values in samples. Reported latency must equal measured latency: `tools/hosttest` checks it
-with an impulse at 44.1 / 48 / 96 kHz on every CI run.
+Values in samples. `tests/unit/CorrectionTests.cpp` measures them with an impulse for every mode at
+44.1 / 48 / 96 kHz (measured == reported, exactly), and `tools/hosttest` re-checks on the built
+binary in CI. The dry path in `mix` and in bypass is delayed by the same amount, so FL's PDC keeps
+everything aligned.
+
+**Live mode note:** with 3 ms of lookahead, a grain often has to come from the previous pitch
+period, so voiced parts get up to ~1 extra period of delay (≈ 2.3 ms at 440 Hz, ≈ 8 ms at 120 Hz)
+on top of the reported 3 ms; unvoiced parts (consonants) are exactly 3 ms. This is inaudible as
+timing, but with `mix` < 100 % in Live mode it can cause slight phasing on low voices. Tracking
+mode (10 ms) aligns grains for f0 ≥ ~50 Hz.
 
 ---
 
@@ -98,3 +105,54 @@ Analysing at 40–48 kHz instead of 20–40 kHz cost 2–4× more for the same a
   median (2 frames). Phase 3 must compensate it with the plugin latency (lookahead) in
   Tracking/HQ modes; Live mode accepts it.
 - Polyphonic or heavily distorted input is out of scope (monophonic detector).
+
+---
+
+## NoteMapper (phase 3) — `src/dsp/NoteMapper.{h,cpp}`, `src/dsp/Scales.h`
+- Key (0–11) + scale (14 types, append-only enum) → 12-bit mask; per pitch class override
+  `Escala | Activa | Ignorar | Eliminar` (parameters `noteState0..11`). Effective state: override if
+  set, else Active in scale / Remove out of scale. "Personalizada" = chromatic shaped by overrides.
+- Target = nearest **valid** note (Active or Ignore) within ±12 semitones. Ignore notes are targets
+  that are not corrected (original pitch passes). Remove notes are never targets (redirect).
+- Hysteresis: stay on the current note until it is 2 × 0.15 semitones farther than the nearest one
+  (≈ 15 cents past the midpoint) and < 1.5 semitones away.
+- Pitches are in MIDI units relative to the A4 reference (400–480 Hz parameter).
+
+## CorrectionCurve (phase 3) — `src/dsp/CorrectionCurve.{h,cpp}`
+- Error e = (target − detected) × 100 cents (0 for Ignore / no target / unvoiced → reset).
+- Tolerance T: weight 1 for |e| ≤ T, cosine fade to 0 over the next 20 cents, 0 beyond; T = 0 disables.
+- One-pole smoother on the weighted error per analysis frame: τ = retune speed (0 → instant).
+  Not reset on note changes, so slow speeds glide between notes and fast deviations (vibrato) pass.
+- Natural hold h: τ += h · 300 ms · ramp, ramp 0→1 between 120 ms and 420 ms after the target note
+  changed. Attacks stay tight; long notes keep micro-variations.
+- Ratio = 2^((correction + 100·transpose) / 1200) → PsolaShifter.
+
+## PsolaShifter (phase 3) — `src/dsp/PsolaShifter.{h,cpp}`
+- Streaming TD-PSOLA, one set of grains for all channels (phase-coherent stereo).
+- Epochs: predicted one period after the last, snapped to the max of a 1 kHz one-pole low-passed
+  mono signal within ±30 % of the period; reseeded after gaps. Unvoiced: fixed 5 ms grid.
+- Synthesis marks every period/ratio; each takes the nearest known epoch e ≤ s + latency and
+  overlap-adds a Hann grain of ±1 analysis period (left half shortened if created late).
+- Normalised OLA: Σ w·x / max(Σ w, 1) — no gain pumping for ratio > 1, natural gaps for
+  ratio < 1 (formant-preserving PSOLA behaviour).
+- Unvoiced grains use e == s on a constant grid: Hann COLA → output == input delayed exactly
+  (unit-tested bit-exact). A 6 ms voicing gain also crossfades wet/dry at transitions.
+- Mix smoothed (20 ms); latency changes fade in over 10 ms; NaN/Inf input sanitised by the processor.
+- Measured (tests): pitch error < 3 cents for −12…+12 semitones on a band-limited saw; level within
+  −8…+4 dB; no clicks at voiced/unvoiced transitions (second difference < 0.02 on a 0.5 sine).
+
+### Control rate
+The processor runs the chain in sub-blocks of 32 samples, so detection → mapping → curve →
+shifter control is updated every analysis frame (~2.7 ms) whatever block size FL delivers.
+
+### Demo / objective check (`tools/demo/run_demo.sh`, also run in CI)
+Synthetic source-filter "sung" phrase, out of tune by −30…+40 cents, A minor:
+
+| Render | Median deviation from scale | p90 |
+|---|---|---|
+| Original | 28.9 ¢ | 44.5 ¢ |
+| Natural (60 ms, hold 50 %) | 10.9 ¢ (vibrato kept) | 28.6 ¢ |
+| Hard tune (0 ms) | 0.6 ¢ | 2.1 ¢ |
+
+### CPU (phase 3, whole processBlock, stereo, Tracking, Linux container)
+44.1 kHz 1.62 % · 48 kHz 1.66 % · 96 kHz 2.00 % · 192 kHz 2.23 % of one core (budget: Live < 3 %).

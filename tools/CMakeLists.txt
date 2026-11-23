@@ -40,3 +40,4 @@ endfunction()
 
 novapitch_add_core_tool(NovaPitchBench bench/PitchBench.cpp)
 novapitch_add_core_tool(NovaPitchSnapshot snapshot/UiSnapshot.cpp)
+novapitch_add_core_tool(NovaPitchRender render/Render.cpp)

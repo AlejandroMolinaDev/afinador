@@ -2,9 +2,14 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "dsp/CorrectionCurve.h"
+#include "dsp/NoteMapper.h"
 #include "dsp/PitchDetector.h"
+#include "dsp/PsolaShifter.h"
+#include "plugin/Parameters.h"
 #include "plugin/PitchFrameFifo.h"
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 
@@ -16,8 +21,7 @@ namespace novapitch
 {
 
 /** Lock-free runtime diagnostics written by the audio thread and read by the
-    editor. Used in phase 1 to verify how FL Studio (or any host) drives the
-    plugin: block sizes, sample rate, channel layout and incoming MIDI. */
+    editor: how FL Studio (or any host) drives the plugin. */
 struct HostDiagnostics
 {
     std::atomic<double>   sampleRate { 0.0 };
@@ -38,15 +42,24 @@ struct HostDiagnostics
     }
 };
 
+/** Signal flow (per sub-block of <= kControlBlock samples, so control runs every
+    ~2.7 ms whatever block size the host uses):
+        input -> mono sum -> PitchDetector --(frame)--> NoteMapper -> CorrectionCurve
+              -> ratio -> PsolaShifter (all channels, same grains) -> dry/wet -> output */
 class NovaPitchProcessor final : public juce::AudioProcessor,
-                                 private dsp::PitchDetector::Listener
+                                 private dsp::PitchDetector::Listener,
+                                 private juce::Timer
                               #if HAS_CLAP_JUCE_EXTENSIONS
                                , public clap_juce_extensions::clap_properties
                               #endif
 {
 public:
+    static constexpr int kControlBlock = 32;
+    static constexpr double kLiveLatencySeconds = 0.003;
+    static constexpr double kTrackingLatencySeconds = 0.010;
+
     NovaPitchProcessor();
-    ~NovaPitchProcessor() override = default;
+    ~NovaPitchProcessor() override;
 
     //==========================================================================
     void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
@@ -56,7 +69,9 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using juce::AudioProcessor::processBlock;
+    using juce::AudioProcessor::processBlockBypassed;
 
     //==========================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -84,37 +99,63 @@ public:
     /** Human readable plugin format (VST3 / AU / CLAP / Standalone ...). */
     juce::String getFormatName() const;
 
-    /** Latency of the current processing mode, in samples. Phase 1: always 0. */
-    int computeLatencySamples() const noexcept { return 0; }
+    /** Latency of a processing mode at a sample rate, in samples. */
+    static int latencyForMode (QualityMode mode, double sampleRate) noexcept;
 
     HostDiagnostics& getDiagnostics() noexcept { return diagnostics; }
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
 
     /** Pitch frames for the UI (consumer: message thread). */
     PitchFrameFifo& getPitchFrameFifo() noexcept { return pitchFifo; }
-    /** Analysis frames per second (for UI time bases). */
-    double getPitchFrameRate() const noexcept { return pitchFrameRate.load (std::memory_order_relaxed); }
 
 private:
-    /** Reports latency to the host only when it actually changes. Must be called
-        from prepareToPlay or the message thread, never from processBlock. FL
-        Studio uses this value for plugin delay compensation (PDC). */
-    void updateReportedLatency();
+    struct ParamPointers
+    {
+        std::atomic<float>* inputProfile = nullptr;
+        std::atomic<float>* sensitivity = nullptr;
+        std::atomic<float>* qualityMode = nullptr;
+        std::atomic<float>* key = nullptr;
+        std::atomic<float>* scale = nullptr;
+        std::atomic<float>* referenceA4 = nullptr;
+        std::atomic<float>* retuneSpeed = nullptr;
+        std::atomic<float>* tolerance = nullptr;
+        std::atomic<float>* naturalHold = nullptr;
+        std::atomic<float>* transpose = nullptr;
+        std::atomic<float>* mix = nullptr;
+        std::array<std::atomic<float>*, 12> noteStates {};
+    };
+
+    /** Reads all parameters and pushes them into the DSP objects (audio thread). */
+    void updateDspFromParameters() noexcept;
+    QualityMode currentMode() const noexcept;
+    void runChain (juce::AudioBuffer<float>&, bool bypassed) noexcept;
 
     // PitchDetector::Listener (audio thread)
     void pitchFrameReady (const dsp::PitchEstimate&) noexcept override;
 
+    // Timer (message thread): forwards latency changes to the host (FL PDC).
+    void timerCallback() override;
+
     juce::AudioProcessorValueTreeState apvts;
-    std::atomic<float>* inputProfileParam = nullptr;
-    std::atomic<float>* sensitivityParam = nullptr;
+    ParamPointers params;
 
     HostDiagnostics diagnostics;
 
     dsp::PitchDetector pitchDetector;
+    dsp::NoteMapper noteMapper;
+    dsp::CorrectionCurve correctionCurve;
+    dsp::PsolaShifter shifter;
+
     std::vector<float> monoScratch;
     PitchFrameFifo pitchFifo;
-    std::atomic<double> pitchFrameRate { 0.0 };
     double inputSampleRate = 48000.0;
+
+    // Values cached once per block for the frame callback
+    float a4Hz = 440.0f;
+    float transposeSemitones = 0.0f;
+    QualityMode blockMode = kDefaultQualityMode;
+
+    std::atomic<int> desiredLatency { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NovaPitchProcessor)
 };

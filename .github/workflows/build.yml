@@ -240,6 +240,21 @@ jobs:
           ./build/tools/NovaPitchBench | tee bench.txt
           { echo '### CPU benchmark (Linux x64)'; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Audio demo (render + pitch plot)
+        run: |
+          python3 -m pip install --quiet numpy matplotlib
+          ./tools/demo/run_demo.sh build demo-out
+          { echo '### Audio demo: desviación respecto a la escala'; echo '```'; cat demo-out/resumen.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload audio demo
+        uses: actions/upload-artifact@v5
+        with:
+          name: Audio-demo
+          path: |
+            demo-out/*.wav
+            demo-out/*.png
+            demo-out/resumen.txt
+
       - name: Download validators
         run: |
           mkdir -p tools/bin && cd tools/bin

@@ -6,7 +6,7 @@ Estado por fases (ver especificación original, sección 11).
 |---|---|---|
 | 1 | Esqueleto: CMake + JUCE 8, VST3/AU/CLAP/Standalone passthrough, CI Win/Mac/Linux, pluginval | ✅ Hecho (prueba manual en FL pendiente) |
 | 2 | PitchDetector (YIN/MPM) + perfiles + voicing + medidor de afinación | ✅ Hecho (prueba manual en FL pendiente) |
-| 3 | NoteMapper + CorrectionCurve + PSOLA (Live/Tracking) + transposición + mezcla + latencia | ⏳ |
+| 3 | NoteMapper + CorrectionCurve + PSOLA (Live/Tracking) + transposición + mezcla + latencia | ✅ Hecho (prueba manual en FL pendiente) |
 | 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ⏳ |
 | 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ⏳ |
 | 6 | UI completa + presets + redimensionado + MIDI Learn | ⏳ |
@@ -32,7 +32,11 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] MIDI Learn (Fase 6) en VST3: sin emulación de CC, el aprendizaje interno solo verá CC en CLAP/AU; en VST3 se documentará "Link to controller" de FL.
 
 ### Fase 3
-- [ ] Compensar el retardo de detección (≈ medio ventana + mediana) con lookahead en Tracking/HQ.
+- [ ] Prueba de escucha con voz real en FL Studio (Windows y Mac) — `docs/TESTING_FL.md`, sección Fase 3. También se puede usar `tools/render` con tomas propias.
+- [ ] Compensar el retardo de detección (≈ media ventana + mediana) alineando el control con el audio en Tracking/HQ (hoy el control llega ~5–10 ms tarde: suaviza ligeramente los ataques con velocidad 0).
+- [ ] Modo Live: retardo extra de hasta ~1 periodo en partes con voz (documentado en DSP_NOTES); valorar ventanas asimétricas más cortas.
+- [ ] Teclado de 12 notas en la UI (estados Activa/Ignorar/Eliminar): los parámetros `noteState0..11` ya existen y son automatizables; el componente visual llega en la Fase 6.
+- [ ] HQ (signalsmith-stretch) y Vintage reales: Fase 4 (hoy HQ = Tracking, Vintage = Live + ajustes hard tune).
 
 ### Fase 4
 - [ ] Añadir submódulo `signalsmith-stretch`.

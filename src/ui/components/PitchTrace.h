@@ -14,14 +14,15 @@ class PitchTrace final : public juce::Component
 public:
     explicit PitchTrace (double windowSeconds = 5.0);
 
-    /** midi < 0 marks an unvoiced frame. Times must increase; a jump back clears the plot. */
-    void pushFrame (double timeSeconds, float midi);
+    /** midi < 0 marks an unvoiced frame. Times must increase; a jump back clears the plot.
+        outputMidi: corrected pitch (drawn in the accent colour), < 0 if none. */
+    void pushFrame (double timeSeconds, float midi, float outputMidi = -1.0f);
     void setAccent (juce::Colour c) { accent = c; }
 
     void paint (juce::Graphics&) override;
 
 private:
-    struct Point { double t; float midi; };
+    struct Point { double t; float midi; float out; };
 
     double window;
     std::vector<Point> points; // ring buffer

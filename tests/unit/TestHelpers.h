@@ -30,6 +30,14 @@ inline std::unique_ptr<NovaPitchProcessor> makeProcessor (const juce::AudioChann
     return p;
 }
 
+/** Sets a parameter by its real (denormalised) value, as host automation would. */
+inline void setParam (NovaPitchProcessor& p, const juce::String& id, float value)
+{
+    auto* param = p.getValueTreeState().getParameter (id);
+    jassert (param != nullptr);
+    param->setValueNotifyingHost (param->convertTo0to1 (value));
+}
+
 inline void fillWithNoise (juce::AudioBuffer<float>& buffer, int numChannels, uint32_t seed)
 {
     std::mt19937 rng (seed);

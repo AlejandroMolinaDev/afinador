@@ -14,6 +14,8 @@ public:
 
     /** Updates the display (called at the UI frame rate). hz <= 0 means unvoiced. */
     void setPitch (float hz, float confidence, float a4Hz);
+    /** Target note (MIDI, relative to A4 reference; < 0 = none) and applied correction. */
+    void setTarget (float targetMidi, float correctionCents, bool correcting);
     void setAccent (juce::Colour c) { accent = c; repaint(); }
 
     void paint (juce::Graphics&) override;
@@ -27,6 +29,9 @@ private:
     float targetCents = 0.0f;
     float displayedCents = 0.0f;
     int framesSinceVoiced = 1000;
+    float targetMidi = -1.0f;
+    float correctionCents = 0.0f;
+    bool correcting = false;
 };
 
 } // namespace novapitch

@@ -99,6 +99,13 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PitchUtils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PitchDetector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PitchDetector.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/Scales.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/NoteMapper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/NoteMapper.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/CorrectionCurve.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/CorrectionCurve.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PsolaShifter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PsolaShifter.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp)
@@ -121,6 +128,7 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/TuningMeter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PitchTrace.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PitchTrace.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/LabeledControls.h
 )
 
 target_include_directories(NovaPitchCore INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)

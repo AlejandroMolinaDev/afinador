@@ -4,9 +4,9 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-![NovaPitch — Fase 2](docs/img/fase2-editor.png)
+![NovaPitch — Fase 3](docs/img/fase3-editor.png)
 
-**Estado:** Fase 2 — detección de afinación en tiempo real con medidor y gráfico (el audio todavía pasa sin cambios; la corrección llega en la Fase 3). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 3 — corrección automática en tiempo real: tonalidad y 14 escalas, velocidad (0 ms = hard tune), tolerancia, sostenido natural, transposición ±12, mezcla, modos Live (3 ms) y Tracking (10 ms). HQ, Vintage y formantes llegan en la Fase 4. Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|
@@ -87,6 +87,13 @@ xattr -dr com.apple.quarantine NovaPitch.vst3 NovaPitch.component NovaPitch.clap
 4. La ventana muestra "FL Studio detectado", el formato cargado, frecuencia de muestreo, tamaños de bloque, canales y eventos MIDI recibidos.
 
 Checklist completo de pruebas manuales: [`docs/TESTING_FL.md`](docs/TESTING_FL.md).
+
+## Probar sin DAW: render offline
+`NovaPitchRender` procesa un WAV/AIFF/FLAC con los parámetros que quieras y compensa la latencia, para comparar antes/después con tus propias tomas:
+```bash
+build/tools/NovaPitchRender mi_voz.wav mi_voz_hardtune.wav key=9 scale=1 retuneSpeed=0
+```
+Sin argumentos lista todos los parámetros (IDs y valores por defecto). `tools/demo/run_demo.sh` genera una frase sintética desafinada, la procesa con varios ajustes y dibuja el pitch antes/después (requiere Python con numpy y matplotlib); la CI publica ese resultado en el artefacto `Audio-demo`.
 
 ## Integración continua y pruebas automáticas
 GitHub Actions compila en Windows x64, macOS Universal y Linux y ejecuta:

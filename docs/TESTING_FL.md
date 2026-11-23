@@ -67,5 +67,24 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 29 | La lista de parámetros del plugin en FL muestra solo los parámetros de NovaPitch (sin cientos de "MIDI CC") | | |
 | 30 | CPU del plugin en el Mixer (*Performance monitor*) a 48 kHz / buffer 128: anotar % | | |
 
+## Fase 3 — Corrección automática
+
+> Automático en CI: +35 cents corregidos a < 5 cents (Live/Tracking/Vintage, 44.1–96 kHz), hard tune en escalones, tolerancia, notas ignoradas/eliminadas, referencia A4, transposición ±12, sin clicks en transiciones, latencia medida = reportada en los 4 modos, demo de audio (`Audio-demo`).
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 31 | Voz real en un insert, **Velocidad 0**: efecto hard tune claro, notas en escalones, sin glitches | | |
+| 32 | **Velocidad 40–80 ms**: corrección natural, el vibrato se conserva | | |
+| 33 | **Tonalidad/Escala** correctas para la canción: no salta a notas fuera de escala | | |
+| 34 | **Tolerancia** 20–40 ¢: los glissandos y adornos pasan sin corregir | | |
+| 35 | **Sostenido** 50–100 %: notas largas más naturales, ataques igual de precisos | | |
+| 36 | **Transposición** ±12: la voz sube/baja sin efecto "ardilla" (formantes preservados) | | |
+| 37 | **Mezcla** 50 %: sin flanger/phasing en modo Tracking | | |
+| 38 | Cambiar **Modo** Live ↔ Tracking durante la reproducción: FL reajusta la compensación (PDC) sin desfase con otras pistas | | |
+| 39 | Exportar (render) el proyecto: el resultado suena igual que en tiempo real y alineado | | |
+| 40 | Consonantes (s, t, k) y respiraciones: sin artefactos ni "zumbidos" | | |
+| 41 | Automatizar Velocidad/Tonalidad/Escala desde FL: los cambios se oyen sin clics | | |
+| 42 | CPU (*Performance monitor*) a 48 kHz / buffer 128 en modo Live y Tracking: anotar % | | |
+
 ## Notas / incidencias encontradas
 - 

@@ -5,10 +5,13 @@
 
 #include "plugin/PitchFrameFifo.h"
 #include "ui/LookAndFeel.h"
+#include "ui/components/LabeledControls.h"
 #include "ui/components/PitchTrace.h"
 #include "ui/components/TuningMeter.h"
 
 #include <array>
+#include <memory>
+#include <vector>
 
 namespace novapitch
 {
@@ -29,7 +32,7 @@ public:
     void resized() override;
 
     static constexpr int kBaseWidth = 760;
-    static constexpr int kBaseHeight = 460;
+    static constexpr int kBaseHeight = 604;
 
 private:
     class Content final : public juce::Component
@@ -45,7 +48,6 @@ private:
 
     void timerCallback() override;
     juce::String buildFooterText() const;
-    void updateProfileRangeLabel();
 
     NovaPitchProcessor& processor;
     NovaLookAndFeel lookAndFeel;
@@ -55,11 +57,8 @@ private:
     TuningMeter meter;
     PitchTrace trace;
 
-    juce::Label profileLabel, profileRangeLabel, sensitivityLabel;
-    juce::ComboBox profileBox;
-    juce::Slider sensitivitySlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> profileAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> sensitivityAttachment;
+    std::vector<std::unique_ptr<LabeledCombo>> combos; // key, scale, mode, profile
+    std::vector<std::unique_ptr<LabeledKnob>> knobs;   // speed, tolerance, hold, transpose, mix, sensitivity, A4
 
     juce::String hostDescription;
     bool hostIsFlStudio = false;

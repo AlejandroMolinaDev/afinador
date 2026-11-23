@@ -19,19 +19,19 @@ PitchTrace::PitchTrace (double windowSeconds)
 {
 }
 
-void PitchTrace::pushFrame (double t, float midi)
+void PitchTrace::pushFrame (double t, float midi, float outputMidi)
 {
     if (count > 0 && t + 0.25 < latestTime)
         count = 0; // stream restarted (prepareToPlay / sample-rate change)
 
-    points[head] = { t, midi };
+    points[head] = { t, midi, outputMidi };
     head = (head + 1) % points.size();
     count = std::min (count + 1, points.size());
     latestTime = t;
 
     // Follow the singer slowly so the plot stays centred.
-    if (midi >= 0.0f)
-        centreMidi += 0.02f * (midi - centreMidi);
+    if (const float m = outputMidi >= 0.0f ? outputMidi : midi; m >= 0.0f)
+        centreMidi += 0.02f * (m - centreMidi);
 }
 
 void PitchTrace::paint (juce::Graphics& g)
@@ -71,38 +71,53 @@ void PitchTrace::paint (juce::Graphics& g)
     if (count < 2)
         return;
 
-    juce::Path path;
-    bool penDown = false;
-    double prevT = 0.0;
-    const size_t start = (head + points.size() - count) % points.size();
+    auto buildPath = [&] (bool output) {
+        juce::Path path;
+        bool penDown = false;
+        double prevT = 0.0;
+        const size_t start = (head + points.size() - count) % points.size();
 
-    for (size_t i = 0; i < count; ++i)
-    {
-        const auto& p = points[(start + i) % points.size()];
-        if (p.t < latestTime - window)
-            continue;
-
-        if (p.midi < 0.0f || (penDown && p.t - prevT > kMaxGapSeconds))
+        for (size_t i = 0; i < count; ++i)
         {
-            penDown = false;
-            if (p.midi < 0.0f)
+            const auto& p = points[(start + i) % points.size()];
+            if (p.t < latestTime - window)
                 continue;
-        }
 
-        const juce::Point<float> xy { xFor (p.t), yFor (juce::jlimit (lowMidi - 1.0f, highMidi + 1.0f, p.midi)) };
-        if (! penDown)
-            path.startNewSubPath (xy);
-        else
-            path.lineTo (xy);
-        penDown = true;
-        prevT = p.t;
-    }
+            const float m = output ? p.out : p.midi;
+            if (m < 0.0f || (penDown && p.t - prevT > kMaxGapSeconds))
+            {
+                penDown = false;
+                if (m < 0.0f)
+                    continue;
+            }
+
+            const juce::Point<float> xy { xFor (p.t), yFor (juce::jlimit (lowMidi - 1.0f, highMidi + 1.0f, m)) };
+            if (! penDown)
+                path.startNewSubPath (xy);
+            else
+                path.lineTo (xy);
+            penDown = true;
+            prevT = p.t;
+        }
+        return path;
+    };
 
     g.saveState();
     g.reduceClipRegion (plot.toNearestInt());
+    // Input pitch (thin, muted) under the corrected output (accent).
+    g.setColour (Palette::textMuted.withAlpha (0.7f));
+    g.strokePath (buildPath (false), juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (accent);
-    g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.strokePath (buildPath (true), juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.restoreState();
+
+    // Legend
+    g.setFont (juce::FontOptions (10.0f));
+    auto legend = area.reduced (12.0f, 6.0f).removeFromTop (12.0f);
+    g.setColour (accent);
+    g.drawText (juce::String::fromUTF8 ("corregida"), legend.removeFromRight (64.0f), juce::Justification::centredRight);
+    g.setColour (Palette::textMuted);
+    g.drawText (juce::String::fromUTF8 ("entrada"), legend.removeFromRight (56.0f), juce::Justification::centredRight);
 }
 
 } // namespace novapitch

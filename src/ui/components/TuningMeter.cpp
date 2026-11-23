@@ -50,6 +50,13 @@ void TuningMeter::setPitch (float newHz, float newConfidence, float a4Hz)
     repaint();
 }
 
+void TuningMeter::setTarget (float newTargetMidi, float newCorrectionCents, bool isCorrecting)
+{
+    targetMidi = newTargetMidi;
+    correctionCents = newCorrectionCents;
+    correcting = isCorrecting;
+}
+
 void TuningMeter::paint (juce::Graphics& g)
 {
     auto area = getLocalBounds().toFloat();
@@ -63,10 +70,22 @@ void TuningMeter::paint (juce::Graphics& g)
     const bool inTune = active && std::abs (displayedCents) <= kInTuneCents;
     const auto valueColour = ! voiced ? Palette::textMuted : (inTune ? Palette::ok : Palette::textPrimary);
 
-    // Caption ---------------------------------------------------------------
+    // Caption + target -------------------------------------------------------
+    auto caption = area.removeFromTop (16.0f);
     g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
     g.setColour (Palette::textMuted);
-    g.drawText (u8 ("NOTA DETECTADA"), area.removeFromTop (16.0f), juce::Justification::centredLeft);
+    g.drawText (u8 ("NOTA DETECTADA"), caption, juce::Justification::centredLeft);
+
+    if (voiced && targetMidi >= 0.0f)
+    {
+        const auto targetName = juce::String (dsp::midiNoteName (static_cast<int> (std::lround (targetMidi))));
+        const auto text = correcting
+            ? u8 ("OBJETIVO ") + targetName + u8 ("  ·  corrección ")
+                  + (correctionCents >= 0.0f ? "+" : u8 ("−")) + juce::String (std::abs (correctionCents), 1) + u8 (" ¢")
+            : u8 ("OBJETIVO ") + targetName + u8 ("  ·  nota ignorada");
+        g.setColour (correcting ? accent : Palette::textMuted);
+        g.drawText (text, caption, juce::Justification::centredRight);
+    }
 
     // Note + Hz + cents -----------------------------------------------------
     auto top = area.removeFromTop (area.getHeight() * 0.62f);

@@ -5,6 +5,9 @@ add_executable(NovaPitchTests
     unit/PassthroughTests.cpp
     unit/StateTests.cpp
     unit/PitchDetectorTests.cpp
+    unit/NoteMapperCurveTests.cpp
+    unit/PsolaShifterTests.cpp
+    unit/CorrectionTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )
@@ -25,6 +28,12 @@ target_link_libraries(NovaPitchTests PRIVATE
 )
 
 novapitch_apply_compiler_settings(NovaPitchTests)
+if(NOT MSVC)
+    # Exact float comparisons are intended in tests. Source-level options come after
+    # the JUCE warning flags, so they win.
+    get_target_property(_testSources NovaPitchTests SOURCES)
+    set_source_files_properties(${_testSources} PROPERTIES COMPILE_OPTIONS "-Wno-float-equal")
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/libs/Catch2/extras")
 include(Catch)

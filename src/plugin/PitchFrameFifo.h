@@ -10,11 +10,16 @@ namespace novapitch
 /** One pitch analysis frame as seen by the UI. */
 struct PitchFrame
 {
-    double timeSeconds = 0.0; ///< input-stream time since prepareToPlay
-    float frequencyHz = 0.0f; ///< 0 when unvoiced
+    double timeSeconds = 0.0;    ///< input-stream time since prepareToPlay
+    float frequencyHz = 0.0f;    ///< detected f0; 0 when unvoiced
+    float outputHz = 0.0f;       ///< f0 after correction + transposition; 0 when unvoiced
+    float targetMidi = -1.0f;    ///< target note (relative to the A4 reference), -1 if none
+    float correctionCents = 0.0f;
+    float referenceA4 = 440.0f;
     float confidence = 0.0f;
     float rmsDb = -120.0f;
     bool voiced = false;
+    bool correcting = false;     ///< false for "Ignore" notes / no target
 };
 
 /** Single-producer (audio thread) / single-consumer (message thread) lock-free

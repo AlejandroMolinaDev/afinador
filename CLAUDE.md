@@ -1,7 +1,7 @@
 # CLAUDE.md — NovaPitch
 
 Real-time monophonic pitch correction plugin (vocal tuner) in C++20 / JUCE 8.
-Full spec: the original prompt document (phases 1–10). Current status: **Phase 2 done (pitch detection + tuning meter; audio still passthrough)**.
+Full spec: the original prompt document (phases 1–10). Current status: **Phase 3 done (automatic correction: NoteMapper + CorrectionCurve + PSOLA, Live/Tracking latency)**.
 Roadmap and pending items: `docs/ROADMAP.md`.
 
 ## Priority: FL Studio on Windows AND macOS
@@ -51,6 +51,8 @@ Automated host-level checks (no DAW needed):
 build/tools/NovaPitchHostTest_artefacts/Release/NovaPitchHostTest build/NovaPitch_artefacts/Release/VST3/NovaPitch.vst3 --editor
 build/tools/NovaPitchBench                     # CPU % of one core, per profile / sample rate
 build/tools/NovaPitchSnapshot snapshots        # editor PNGs (100 % and 200 %) after a synthetic sung phrase
+build/tools/NovaPitchRender in.wav out.wav retuneSpeed=0 key=9 scale=1   # offline render (no args: list params)
+./tools/demo/run_demo.sh build demo-out        # synthetic off-key phrase -> renders -> pitch plot (numpy, matplotlib)
 ```
 (On headless Linux prefix with `xvfb-run -a`.) The host test loads the *binary* through JUCE's hosting layer and runs FL-like scenarios: 6 sample rates × 4 max buffer sizes with random (and empty) blocks, parameter automation, MIDI, bypass toggling, latency (impulse) vs reported, save/reopen state, 8 instances, mono/stereo layouts, editor open/close while the audio thread runs.
 
@@ -61,11 +63,11 @@ CMake options: `NOVAPITCH_BUILD_TESTS` (ON), `NOVAPITCH_BUILD_TOOLS` (ON), `NOVA
 ## Architecture
 - `libs/` — git submodules pinned by commit: JUCE 8.0.15, clap-juce-extensions (main @ CLAP 1.2.10), Catch2 v3.16.1.
 - CMake INTERFACE libs: `NovaPitchDsp` (src/dsp + juce_dsp) ⊂ `NovaPitchCore` (all plugin sources). Linked by the plugin target `NovaPitch`, `NovaPitchTests` and the tools, so everything compiles exactly the plugin code.
-- `src/dsp/` — pure DSP, no GUI: `PitchDetector` (YIN-FFT + MPM validator, voicing, octave hysteresis, median; see `docs/DSP_NOTES.md`), `InputProfile` (f0 ranges, enum values stored in state: append only), `PitchUtils` (Hz/MIDI/cents/note names), `Biquad`.
-- `src/plugin/` — `NovaPitchProcessor` (AudioProcessor + `clap_properties` with CLAP; mono-sums input → PitchDetector → `PitchFrameFifo`), `Parameters` (APVTS layout, IDs, state version), `PitchFrameFifo` (lock-free SPSC audio→UI).
-- `src/ui/` — `PluginEditor` (fixed 760×460 `Content` scaled by AffineTransform: 75–200 %, crisp on HiDPI; 30 Hz timer drains the FIFO), `components/TuningMeter`, `components/PitchTrace` (5 s piano-roll trace), `NovaLookAndFeel` (original palette, configurable accent, custom knob/combo).
+- `src/dsp/` — pure DSP, no GUI: `NoteMapper` + `Scales` (key/scale/note states → target, hysteresis), `CorrectionCurve` (speed/tolerance/natural hold, in cents), `PsolaShifter` (streaming TD-PSOLA, fixed latency, identity on unvoiced), `PitchDetector` (YIN-FFT + MPM validator, voicing, octave hysteresis, median; see `docs/DSP_NOTES.md`), `InputProfile` (f0 ranges, enum values stored in state: append only), `PitchUtils` (Hz/MIDI/cents/note names), `Biquad`.
+- `src/plugin/` — `NovaPitchProcessor` (AudioProcessor + `clap_properties` with CLAP; runs the chain in 32-sample sub-blocks: mono sum → PitchDetector → (frame callback) NoteMapper → CorrectionCurve → PsolaShifter control; latency per mode, reported to the host from a message-thread timer when the mode changes; bypass keeps the latency-compensated dry path), `Parameters` (APVTS layout, IDs, state version), `PitchFrameFifo` (lock-free SPSC audio→UI).
+- `src/ui/` — `PluginEditor` (fixed 760×604 `Content` scaled by AffineTransform: 75–200 %, crisp on HiDPI; 30 Hz timer drains the FIFO), `components/TuningMeter` (detected note, cents, target + correction), `components/PitchTrace` (5 s piano-roll: input vs corrected), `components/LabeledControls` (knob/combo bound to APVTS), `NovaLookAndFeel` (original palette, configurable accent, custom knob/combo).
 - `tests/unit/` — Catch2 tests; `tests/signals/SignalGenerators.h` — deterministic synthetic signals (sine, band-limited saw, weak fundamental, vibrato, glissando, noise).
-- `tools/` — `hosttest` (FL-like host scenarios on the binary), `bench` (CPU), `snapshot` (UI PNGs).
+- `tools/` — `hosttest` (FL-like host scenarios on the binary), `bench` (CPU), `snapshot` (UI PNGs), `render` (offline WAV render with any parameters, latency removed), `demo/` (Python: synthetic out-of-tune phrase → renders → pitch plot).
 - `.github/workflows/build.yml` — Windows x64, macOS Universal, Linux x64: build, unit tests, host test, CPU bench (run summary), UI snapshots (artefact), pluginval 10, auval, clap-validator, plugin artefacts.
 
 ## Conventions
@@ -87,3 +89,7 @@ CMake options: `NOVAPITCH_BUILD_TESTS` (ON), `NOVAPITCH_BUILD_TOOLS` (ON), `NOVA
 - Phase 2: YIN picks the minimum of the whole sub-threshold dip + sub-multiple check (fixes noise ripples and octave-down errors found while testing with noise).
 - Phase 2: VST3 MIDI CC emulation disabled (see FL rules).
 - Phase 2: automated host test instead of manual-only FL checks (FL can't run in CI); manual checklist still in `docs/TESTING_FL.md`.
+- Phase 3: parameters appended (never inserted): qualityMode, key, scale, referenceA4, retuneSpeed, tolerance, naturalHold, transpose, mix, noteState0..11. `qualityMode` already has its 4 items (Live, Tracking, HQ, Vintage) so automation stays stable when HQ/Vintage get their own engines in phase 4.
+- Phase 3: fixed latency per mode (Live 3 ms, Tracking 10 ms) rather than per profile, so FL's PDC only changes when the user changes the mode. Default mode: Tracking.
+- Phase 3: choice parameters parse text robustly (exact, case-insensitive, UTF-8 mis-decoded as Latin-1 by the CLAP wrapper, numeric index) — fixes clap-validator's text round-trip on accented names.
+- Phase 3: input samples are sanitised (NaN/Inf → 0) before the chain, output sanitised too.

@@ -41,8 +41,9 @@ juce::String channelName (int n)
 // Layout (base coordinates)
 const juce::Rectangle<int> kMeterBounds   { 20, 76, 470, 222 };
 const juce::Rectangle<int> kSidePanel     { 506, 76, 234, 222 };
-const juce::Rectangle<int> kTraceBounds   { 20, 312, 720, 112 };
-const juce::Rectangle<int> kFooterBounds  { 20, 432, 720, 18 };
+const juce::Rectangle<int> kKnobPanel     { 20, 312, 720, 138 };
+const juce::Rectangle<int> kTraceBounds   { 20, 462, 720, 110 };
+const juce::Rectangle<int> kFooterBounds  { 20, 580, 720, 16 };
 } // namespace
 
 //==============================================================================
@@ -64,44 +65,42 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     content.addAndMakeVisible (meter);
     content.addAndMakeVisible (trace);
 
-    // Input profile ------------------------------------------------------------
-    profileLabel.setText (u8 ("Perfil de entrada"), juce::dontSendNotification);
-    profileLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    profileLabel.setColour (juce::Label::textColourId, Palette::textMuted);
-    content.addAndMakeVisible (profileLabel);
+    auto& state = p.getValueTreeState();
 
-    for (int i = 0; i < dsp::kNumInputProfiles; ++i)
-        profileBox.addItem (u8 (dsp::kInputProfileNames[static_cast<size_t> (i)]), i + 1);
-    profileBox.setTooltip (u8 ("Rango de frecuencias en el que se busca la nota. Elige el más "
-                               "cercano a la voz o instrumento: un rango ajustado reduce errores de octava."));
-    content.addAndMakeVisible (profileBox);
-    profileAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        p.getValueTreeState(), ParamIDs::inputProfile, profileBox);
-    profileBox.onChange = [this] { updateProfileRangeLabel(); };
+    // Key / scale / mode / profile ------------------------------------------------
+    combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::key, u8 ("Tonalidad"),
+        u8 ("Nota de la tonalidad. Junto con la escala define las notas destino.")));
+    combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::scale, u8 ("Escala"),
+        u8 ("Notas válidas. Cromática = las 12 notas. Las notas fuera de escala se redirigen a la vecina válida.")));
+    combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::qualityMode, u8 ("Modo"),
+        u8 ("Live: latencia mínima (~3 ms) para directo. Tracking: ~10 ms, más preciso para grabar y mezclar. "
+            "HQ y Vintage: motores de la Fase 4 (por ahora usan Tracking y Live).")));
+    combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::inputProfile, u8 ("Perfil de entrada"),
+        u8 ("Rango de frecuencias en el que se busca la nota. Un rango ajustado reduce errores de octava.")));
+    for (auto& c : combos)
+        content.addAndMakeVisible (*c);
 
-    profileRangeLabel.setFont (juce::FontOptions (12.0f));
-    profileRangeLabel.setColour (juce::Label::textColourId, Palette::textMuted);
-    content.addAndMakeVisible (profileRangeLabel);
-    updateProfileRangeLabel();
-
-    // Sensitivity --------------------------------------------------------------
-    sensitivityLabel.setText (u8 ("Sensibilidad"), juce::dontSendNotification);
-    sensitivityLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    sensitivityLabel.setColour (juce::Label::textColourId, Palette::textMuted);
-    content.addAndMakeVisible (sensitivityLabel);
-
-    sensitivitySlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    sensitivitySlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    sensitivitySlider.setColour (juce::Slider::textBoxTextColourId, Palette::textPrimary);
-    sensitivitySlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 70, 22);
-    sensitivitySlider.setTooltip (u8 ("Cuánto ruido o aire tolera la detección (0–100 %). Súbela para voces "
-                                      "susurradas o grabaciones ruidosas; bájala si la detección salta en "
-                                      "respiraciones o sibilantes."));
-    content.addAndMakeVisible (sensitivitySlider);
-    sensitivityAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        p.getValueTreeState(), ParamIDs::sensitivity, sensitivitySlider);
-    sensitivitySlider.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v)) + " %"; };
-    sensitivitySlider.updateText();
+    // Knobs ----------------------------------------------------------------------
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::retuneSpeed, u8 ("Velocidad"),
+        u8 ("Tiempo que tarda la corrección (0–400 ms). 0 = salto instantáneo (efecto hard tune); "
+            "valores altos = corrección gradual y natural que deja pasar el vibrato.")));
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::tolerance, u8 ("Tolerancia"),
+        u8 ("Solo corrige cuando la voz ya está cerca de la nota (0–100 cents). Deja pasar glissandos, "
+            "scoops y adornos. 0 = siempre corrige.")));
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::naturalHold, u8 ("Sostenido"),
+        u8 ("Sostenido natural: en notas largas y estables suaviza la corrección para conservar las "
+            "micro-variaciones, manteniendo precisos los ataques.")));
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::transpose, u8 ("Transposición"),
+        u8 ("Desplaza la voz corregida ±12 semitonos.")));
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::mix, u8 ("Mezcla"),
+        u8 ("Proporción entre la señal original (con su retardo compensado) y la corregida.")));
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::sensitivity, u8 ("Sensibilidad"),
+        u8 ("Cuánto ruido o aire tolera la detección (0–100 %). Súbela para voces susurradas o tomas "
+            "ruidosas; bájala si la detección salta en respiraciones o sibilantes.")));
+    knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::referenceA4, u8 ("Referencia A4"),
+        u8 ("Frecuencia del La 4 (400–480 Hz). 440 Hz es el estándar.")));
+    for (auto& k : knobs)
+        content.addAndMakeVisible (*k);
 
     meter.setAccent (lookAndFeel.getAccent());
     trace.setAccent (lookAndFeel.getAccent());
@@ -123,15 +122,6 @@ PluginEditor::~PluginEditor()
 }
 
 //==============================================================================
-void PluginEditor::updateProfileRangeLabel()
-{
-    const auto profile = dsp::inputProfileFromIndex (profileBox.getSelectedId() - 1);
-    const auto r = dsp::getF0Range (profile);
-    profileRangeLabel.setText (u8 ("Rango de búsqueda: ") + juce::String (juce::roundToInt (r.minHz)) + u8 ("–")
-                                   + juce::String (juce::roundToInt (r.maxHz)) + " Hz",
-                               juce::dontSendNotification);
-}
-
 juce::String PluginEditor::buildFooterText() const
 {
     auto& d = processor.getDiagnostics();
@@ -162,7 +152,9 @@ void PluginEditor::timerCallback()
         for (int i = 0; i < n; ++i)
         {
             const auto& f = frameScratch[static_cast<size_t> (i)];
-            trace.pushFrame (f.timeSeconds, f.voiced ? dsp::hzToMidi (f.frequencyHz) : -1.0f);
+            trace.pushFrame (f.timeSeconds,
+                             f.voiced ? dsp::hzToMidi (f.frequencyHz, f.referenceA4) : -1.0f,
+                             f.voiced ? dsp::hzToMidi (f.outputHz, f.referenceA4) : -1.0f);
             lastFrame = f;
         }
         gotFrames = gotFrames || n > 0;
@@ -170,8 +162,8 @@ void PluginEditor::timerCallback()
             break;
     }
 
-    // Phase 2: reference A4 = 440 Hz (the "detune" reference arrives in phase 3).
-    meter.setPitch (lastFrame.voiced ? lastFrame.frequencyHz : 0.0f, lastFrame.confidence, dsp::kDefaultA4Hz);
+    meter.setTarget (lastFrame.voiced ? lastFrame.targetMidi : -1.0f, lastFrame.correctionCents, lastFrame.correcting);
+    meter.setPitch (lastFrame.voiced ? lastFrame.frequencyHz : 0.0f, lastFrame.confidence, lastFrame.referenceA4);
     if (! gotFrames)
         lastFrame.voiced = false; // host stopped calling processBlock: let the meter fade
     else
@@ -203,14 +195,17 @@ void PluginEditor::Content::resized()
     owner.meter.setBounds (kMeterBounds);
     owner.trace.setBounds (kTraceBounds);
 
-    auto side = kSidePanel.reduced (16, 12);
-    owner.profileLabel.setBounds (side.removeFromTop (18));
-    side.removeFromTop (4);
-    owner.profileBox.setBounds (side.removeFromTop (30));
-    owner.profileRangeLabel.setBounds (side.removeFromTop (22));
-    side.removeFromTop (12);
-    owner.sensitivityLabel.setBounds (side.removeFromTop (18));
-    owner.sensitivitySlider.setBounds (side.removeFromTop (96));
+    auto side = kSidePanel.reduced (14, 10);
+    for (auto& c : owner.combos)
+    {
+        c->setBounds (side.removeFromTop (44));
+        side.removeFromTop (8);
+    }
+
+    auto row = kKnobPanel.reduced (8, 10);
+    const int w = row.getWidth() / static_cast<int> (owner.knobs.size());
+    for (auto& k : owner.knobs)
+        k->setBounds (row.removeFromLeft (w).reduced (4, 0));
 }
 
 void PluginEditor::Content::paint (juce::Graphics& g)
@@ -240,15 +235,17 @@ void PluginEditor::Content::paint (juce::Graphics& g)
 
     g.setColour (Palette::textMuted);
     g.setFont (juce::FontOptions (12.0f));
-    g.drawText (u8 ("v") + NOVAPITCH_VERSION_STRING + u8 ("  ·  Fase 2: detección"),
+    g.drawText (u8 ("v") + NOVAPITCH_VERSION_STRING + u8 ("  ·  Fase 3: corrección"),
                 header.withRight (badge.getX() - 14.0f), juce::Justification::centredRight);
 
-    // Side panel background ---------------------------------------------------
-    const auto side = kSidePanel.toFloat();
-    g.setColour (Palette::panel);
-    g.fillRoundedRectangle (side, 10.0f);
-    g.setColour (Palette::panelOutline);
-    g.drawRoundedRectangle (side.reduced (0.5f), 10.0f, 1.0f);
+    // Panel backgrounds -----------------------------------------------------------
+    for (const auto& r : { kSidePanel.toFloat(), kKnobPanel.toFloat() })
+    {
+        g.setColour (Palette::panel);
+        g.fillRoundedRectangle (r, 10.0f);
+        g.setColour (Palette::panelOutline);
+        g.drawRoundedRectangle (r.reduced (0.5f), 10.0f, 1.0f);
+    }
 
     // Footer: host diagnostics ------------------------------------------------
     g.setColour (Palette::textMuted.withAlpha (0.8f));
