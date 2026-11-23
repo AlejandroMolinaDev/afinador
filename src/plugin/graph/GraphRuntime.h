@@ -45,42 +45,44 @@ private:
     std::array<CaptureFrame, kCapacity> buffer {};
 };
 
-/** Hands compiled CorrectionTracks to the audio thread.
+/** Hands immutable objects (compiled CorrectionTracks, rendered time edits)
+    to the audio thread.
 
-    The message thread publishes a new immutable track by swapping an atomic
-    pointer. The previous track may still be in use by an audio block that
+    The message thread publishes a new immutable object by swapping an atomic
+    pointer. The previous one may still be in use by an audio block that
     started before the swap, so it goes to a graveyard and is deleted only once
     the audio thread has completed a block that started after the swap (the
     processor counts finished blocks), or when the audio is known to be stopped
     (prepareToPlay / releaseResources). The audio thread never allocates,
     frees or locks. */
-class TrackPublisher
+template <typename T>
+class Publisher
 {
 public:
-    TrackPublisher() = default;
-    ~TrackPublisher()
+    Publisher() = default;
+    ~Publisher()
     {
         delete current.exchange (nullptr);
         for (auto& g : graveyard)
-            delete g.track;
+            delete g.object;
     }
 
-    /** Message thread. `blocksDone` = audio blocks finished so far. */
-    void publish (std::unique_ptr<dsp::CorrectionTrack> track, uint64_t blocksDone)
+    /** Message thread. `blocksDone` = audio blocks finished so far. nullptr clears. */
+    void publish (std::unique_ptr<T> object, uint64_t blocksDone)
     {
-        const dsp::CorrectionTrack* old = current.exchange (track.release(), std::memory_order_acq_rel);
+        const T* old = current.exchange (object.release(), std::memory_order_acq_rel);
         if (old != nullptr)
             graveyard.push_back ({ old, blocksDone });
         collect (blocksDone);
     }
 
-    /** Message thread: deletes retired tracks no audio block can still be reading. */
+    /** Message thread: deletes retired objects no audio block can still be reading. */
     void collect (uint64_t blocksDone)
     {
         for (auto it = graveyard.begin(); it != graveyard.end();)
             if (blocksDone >= it->blocksAtRetire + 2)
             {
-                delete it->track;
+                delete it->object;
                 it = graveyard.erase (it);
             }
             else
@@ -91,26 +93,28 @@ public:
     void collectAll()
     {
         for (auto& g : graveyard)
-            delete g.track;
+            delete g.object;
         graveyard.clear();
     }
 
     /** Audio thread: load once per block and use that pointer for the whole block. */
-    const dsp::CorrectionTrack* acquire() const noexcept { return current.load (std::memory_order_acquire); }
+    const T* acquire() const noexcept { return current.load (std::memory_order_acquire); }
 
     size_t graveyardSize() const noexcept { return graveyard.size(); }
 
 private:
     struct Retired
     {
-        const dsp::CorrectionTrack* track;
+        const T* object;
         uint64_t blocksAtRetire;
     };
 
-    std::atomic<const dsp::CorrectionTrack*> current { nullptr };
+    std::atomic<const T*> current { nullptr };
     std::vector<Retired> graveyard;
 
-    JUCE_DECLARE_NON_COPYABLE (TrackPublisher)
+    JUCE_DECLARE_NON_COPYABLE (Publisher)
 };
+
+using TrackPublisher = Publisher<dsp::CorrectionTrack>;
 
 } // namespace novapitch

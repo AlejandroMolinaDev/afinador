@@ -173,9 +173,12 @@ int main (int argc, char* argv[])
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
             }
         };
+        const auto captureRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("NovaPitchCaptures-tool");
+        proc.setCaptureRoot (captureRoot); // keep tool runs out of the user's capture folder
         proc.setGraphCapture (true);
         playFrom (0, sig.size());
         proc.setGraphCapture (false);
+        proc.flushGraphCapture();
         proc.importGraphFromAuto();
 
         auto& model = proc.getGraphModel();
@@ -187,6 +190,13 @@ int main (int argc, char* argv[])
         model.addCurve ({ { 3.70, 62.0f }, { 3.74, 62.6f }, { 3.78, 63.1f } });
         if (auto* graphMode = state.getParameter ("graphMode"))
             graphMode->setValueNotifyingHost (1.0f);
+        // Time edit: the E4 syllable (1.6 s) starts 100 ms later; neighbours absorb it.
+        novapitch::dsp::TimeMap map;
+        map.anchors = { { 0.9, 0.9 }, { 1.7, 1.6 }, { 2.4, 2.4 } };
+        model.setTimeMap (map);
+        proc.renderTimeEditsNow();
+        if (auto* timeTool = findButton (*editor, juce::String::fromUTF8 ("Tiempo")))
+            timeTool->triggerClick();
 
         playFrom (0, static_cast<size_t> (sr * 2.2));
         head.samples = static_cast<int64_t> (sr * 2.2);

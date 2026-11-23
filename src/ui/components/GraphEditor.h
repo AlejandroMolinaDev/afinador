@@ -23,8 +23,8 @@ class GraphModel;
 class GraphEditor final : public juce::Component
 {
 public:
-    enum class Tool { Select = 0, Note, Line, Curve, Erase, Split };
-    static constexpr int kNumTools = 6;
+    enum class Tool { Select = 0, Note, Line, Curve, Erase, Split, Time };
+    static constexpr int kNumTools = 7;
 
     explicit GraphEditor (NovaPitchProcessor&);
     ~GraphEditor() override;

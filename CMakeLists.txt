@@ -126,6 +126,7 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/MidiNoteState.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/KeyDetector.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/graph/CorrectionTrack.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/graph/TimeMap.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp signalsmith-stretch)
@@ -148,6 +149,10 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphRuntime.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/AudioCapture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/AudioCapture.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/TimeRenderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/TimeRenderer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LookAndFeel.cpp

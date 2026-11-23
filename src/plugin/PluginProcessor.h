@@ -19,10 +19,12 @@
 #include "plugin/PresetManager.h"
 #include "plugin/graph/GraphModel.h"
 #include "plugin/graph/GraphRuntime.h"
+#include "plugin/graph/TimeRenderer.h"
 
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <tuple>
 
 #if HAS_CLAP_JUCE_EXTENSIONS
  #include <clap-juce-extensions/clap-juce-extensions.h>
@@ -172,6 +174,21 @@ public:
     /** Applies settings received from another instance (message thread; called by the timer). */
     void applyPendingSync();
 
+    // Captured audio + time edits (phase 9) --------------------------------------
+    /** Default folder of the captured audio (per user, outside the project). */
+    static juce::File defaultCaptureRoot();
+    void setCaptureRoot (const juce::File& root) { captureRoot = root; }
+    juce::File getCaptureRoot() const { return captureRoot; }
+    /** Forgets the captured pitch curve and deletes this instance's captured audio. */
+    void clearGraphCapture();
+    /** Writes pending captured audio and collects finished passes now (tests, shutdown). */
+    void flushGraphCapture();
+    /** Renders the time edits synchronously and publishes them (tests / offline tools). */
+    void renderTimeEditsNow();
+    bool isRenderingTime() const noexcept { return timeRenderer.isBusy() || timeDirty; }
+    /** True when some time edit could not be rendered because its captured audio is gone. */
+    bool isTimeAudioMissing() const noexcept { return timeAudioMissing; }
+
     /** Message-thread housekeeping of the graphical mode: drains the capture
         FIFO, commits capture passes, frees retired tracks. Called by the timer
         (public so tests can run it without a message loop). */
@@ -278,6 +295,21 @@ private:
     juce::SpinLock syncLock;
     SongSettings pendingSync;
     std::atomic<bool> hasPendingSync { false };
+
+    // Captured audio + time edits ------------------------------------------------
+    TimeRenderer::Job makeTimeJob();
+    void updateTimeRender();
+    AudioCapture audioCapture;
+    TimeRenderer timeRenderer;
+    Publisher<RenderedTime> timePublisher;
+    juce::File captureRoot = defaultCaptureRoot();
+    const RenderedTime* blockTime = nullptr; // audio thread
+    int64_t blockHostSample = 0;             // audio thread
+    std::tuple<int, int, double, int> timeKey { -1, -1, 0.0, 0 }; // message thread
+    juce::uint32 timeChangedAt = 0;
+    bool timeDirty = false;
+    int timeJobCounter = 0;
+    bool timeAudioMissing = false;
 
     // Graphical mode ------------------------------------------------------------
     void readPlayHead() noexcept;

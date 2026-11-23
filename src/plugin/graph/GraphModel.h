@@ -4,6 +4,8 @@
 
 #include "dsp/NoteMapper.h"
 #include "dsp/graph/CorrectionTrack.h"
+#include "dsp/graph/TimeMap.h"
+#include "plugin/graph/AudioCapture.h"
 
 #include <functional>
 #include <memory>
@@ -18,6 +20,9 @@ namespace GraphIds
 inline const juce::Identifier note ("Note"), line ("Line"), curve ("Curve");
 inline const juce::Identifier id ("id"), start ("start"), end ("end"), pitch ("pitch"), endPitch ("endPitch"),
     points ("points"), captured ("captured"), retuneMs ("retuneMs"), vibratoKeep ("vibratoKeep"), formantSt ("formantSt");
+// Phase 9: time edits (Graph@warp) and captured audio (plugin state child GraphAudio)
+inline const juce::Identifier warp ("warp"), audio ("GraphAudio"), audioId ("audioId"), pass ("Pass"), file ("file"),
+    length ("length"), rate ("rate"), channels ("channels");
 } // namespace GraphIds
 
 /** One captured analysis frame (host timeline). */
@@ -81,6 +86,24 @@ public:
         Returns the number of notes created. */
     int importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds = 0.08);
 
+    // Time edits (phase 9) -------------------------------------------------------
+    /** Output time (host timeline) <-> source time (captured audio). Objects and the
+        captured curve are stored in source time; compile() maps them to output time. */
+    const dsp::TimeMap& getTimeMap() const noexcept { return timeMap; }
+    /** Undoable (one step per gesture with beginEdit). Invalid maps are ignored. */
+    void setTimeMap (const dsp::TimeMap&);
+    void clearTimeEdits();
+    int getTimeMapGeneration() const noexcept { return timeMapGeneration; }
+
+    // Captured audio (phase 9) ----------------------------------------------------
+    /** Identifier of this instance's capture folder (created when `create`). */
+    juce::String getAudioId (bool create);
+    std::vector<AudioPass> getAudioPasses() const;
+    void addAudioPasses (const std::vector<AudioPass>&);
+    /** Forgets every pass and returns them (the caller deletes the files). */
+    std::vector<AudioPass> removeAudioPasses();
+    int getAudioGeneration() const noexcept { return audioGeneration; }
+
     /** Compiled form for the audio thread. */
     std::unique_ptr<dsp::CorrectionTrack> compile() const;
 
@@ -103,16 +126,24 @@ public:
 private:
     void storeCaptured();
     void loadCaptured();
+    void loadTimeMap();
     juce::ValueTree makeObject (const juce::Identifier& type, double start, double end);
     void changed();
 
-    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override { changed(); }
+    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& property) override
+    {
+        if (property == GraphIds::warp)
+            loadTimeMap(); // also after undo / redo
+        changed();
+    }
     void valueTreeChildAdded (juce::ValueTree&, juce::ValueTree&) override { changed(); }
     void valueTreeChildRemoved (juce::ValueTree&, juce::ValueTree&, int) override { changed(); }
     void valueTreeChildOrderChanged (juce::ValueTree&, int, int) override { changed(); }
 
     juce::UndoManager& undo;
-    juce::ValueTree graph;
+    juce::ValueTree graph, audioTree;
+    dsp::TimeMap timeMap;
+    int timeMapGeneration = 0, audioGeneration = 0;
     std::vector<CaptureFrame> captured, pending;
     juce::int64 nextId = 1;
     bool loading = false;

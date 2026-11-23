@@ -12,7 +12,7 @@ Estado por fases (ver especificación original, sección 11).
 | 6 | UI completa + presets + redimensionado + MIDI Learn | ✅ Hecho (pendiente tu revisión visual y prueba en FL) |
 | 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ✅ Hecho (prueba manual en FL pendiente) |
 | 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ✅ Hecho (prueba manual en FL pendiente) |
-| 9 | Corrección temporal, detector de tonalidad + sync de instancias, ARA2, AAX, Linux | ⏳ |
+| 9 | Corrección temporal, detector de tonalidad + sync de instancias, ARA2, AAX, Linux | ✅ Hecho salvo ARA2 (pospuesto por decisión tuya) y AAX (requiere SDK de Avid); Linux en CI |
 | 10 | Instaladores (Inno Setup / .pkg firmado y notarizado), guía de usuario | ⏳ |
 
 ## Pendientes registrados
@@ -83,8 +83,18 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] Comprimir la curva capturada en el estado (hoy ~1,3 MB por cada 10 min de captura en el .flp).
 
 ### Fase 9
-- [ ] ARA SDK 2.3.0 (compatible con JUCE 8.0.13+).
+- [x] Detector de tonalidad («Escuchar» 10/20/30 s de voz, o desde la captura del modo gráfico).
+- [x] Sincronizar tonalidad/escala/notas/A4 entre instancias del mismo proceso.
+- [x] Captura del audio + corrección temporal no destructiva (herramienta «Tiempo»).
+- [x] Linux: VST3/CLAP/Standalone compilados y validados en CI (pluginval, clap-validator, host test).
+- [ ] Prueba en FL (Windows y Mac) — `docs/TESTING_FL.md`, sección Fase 9.
+- [ ] **ARA2 — pospuesto a después de la Fase 10** (decisión del usuario: FL Studio no soporta ARA). Plan: ARA SDK 2.3.0 (compatible con JUCE 8.0.13+), análisis del clip sin reproducir y render en Reaper / Studio One / Logic / Cubase.
 - [ ] AAX: requiere AAX SDK, cuenta de desarrollador Avid y firma PACE/wraptool (opción `NOVAPITCH_ENABLE_AAX`).
+- [ ] Corrección temporal: el audio capturado vive en la carpeta del usuario, no en el proyecto. Al llevar el proyecto a otro equipo hay que volver a capturar (el resto del modo gráfico sí viaja). Opción futura: exportar/importar las capturas junto al proyecto.
+- [ ] Si se clona una pista con NovaPitch, ambas instancias comparten la carpeta de captura; «Borrar la curva capturada» en una borra el audio de la otra. Opción: carpeta nueva al detectar un clon.
+- [ ] Limpieza de capturas huérfanas (proyectos borrados): hoy manual desde `···` → «Abrir carpeta de capturas de audio».
+- [ ] Corrección temporal más fina: anclas libres (no solo bordes de nota), arrastre de varias notas a la vez, ajuste a la rejilla del tempo.
+- [ ] El detector de tonalidad propone Mayor / Menor natural; otras escalas (modos, pentatónicas) se eligen a mano.
 
 ### Fase 10
 - [ ] `docs/USER_GUIDE_es.md` completa.

@@ -175,7 +175,9 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     harmony.reset();
     midiNotes.allOff();
     trackPublisher.collectAll(); // the audio thread is not running here
+    timePublisher.collectAll();
     lastCaptureTime = -1.0e9;
+    audioCapture.prepare (sampleRate, juce::jlimit (1, AudioCapture::kMaxChannels, getTotalNumInputChannels()));
 
     // prepareToPlay runs outside the audio callback: report latency right away.
     const int latency = modeLatency[static_cast<size_t> (blockMode)];
@@ -187,6 +189,7 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
 void NovaPitchProcessor::releaseResources()
 {
     trackPublisher.collectAll();
+    timePublisher.collectAll();
 }
 
 void NovaPitchProcessor::reset()
@@ -327,9 +330,98 @@ void NovaPitchProcessor::publishGraphTrack()
 
 void NovaPitchProcessor::setGraphCapture (bool shouldCapture)
 {
+    if (shouldCapture)
+        audioCapture.setDirectory (captureRoot.getChildFile (graphModel.getAudioId (true)));
     captureRequested.store (shouldCapture);
     if (! shouldCapture)
         processGraphMessages(); // drain + commit the pass now
+}
+
+juce::File NovaPitchProcessor::defaultCaptureRoot()
+{
+   #if JUCE_WINDOWS
+    const auto base = juce::File::getSpecialLocation (juce::File::windowsLocalAppData);
+   #elif JUCE_MAC
+    const auto base = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Application Support");
+   #else
+    const auto base = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile (".local").getChildFile ("share");
+   #endif
+    return base.getChildFile ("NovaPitch").getChildFile ("Captures");
+}
+
+void NovaPitchProcessor::clearGraphCapture()
+{
+    graphModel.clearCaptured();
+    const auto id = graphModel.getAudioId (false);
+    const auto dir = id.isNotEmpty() ? captureRoot.getChildFile (id) : juce::File();
+    for (const auto& pass : graphModel.removeAudioPasses())
+        if (dir != juce::File())
+            dir.getChildFile (pass.fileName).deleteFile();
+    if (dir.isDirectory() && dir.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 0)
+        dir.deleteFile();
+}
+
+void NovaPitchProcessor::flushGraphCapture()
+{
+    audioCapture.endPass();
+    audioCapture.flush();
+    processGraphMessages();
+}
+
+TimeRenderer::Job NovaPitchProcessor::makeTimeJob()
+{
+    TimeRenderer::Job job;
+    job.map = graphModel.getTimeMap();
+    job.passes = graphModel.getAudioPasses();
+    const auto id = graphModel.getAudioId (false);
+    job.directory = id.isNotEmpty() ? captureRoot.getChildFile (id) : juce::File();
+    job.sampleRate = inputSampleRate;
+    job.channels = juce::jlimit (1, 2, getTotalNumInputChannels());
+    job.id = ++timeJobCounter;
+    return job;
+}
+
+void NovaPitchProcessor::renderTimeEditsNow()
+{
+    timeKey = { graphModel.getTimeMapGeneration(), graphModel.getAudioGeneration(), inputSampleRate, getTotalNumInputChannels() };
+    timeDirty = false;
+    auto job = makeTimeJob();
+    auto rendered = TimeRenderer::render (job);
+    timeAudioMissing = rendered != nullptr && rendered->audioMissing;
+    timePublisher.publish (std::move (rendered), audioBlocksDone.load());
+}
+
+void NovaPitchProcessor::updateTimeRender()
+{
+    const auto key = std::make_tuple (graphModel.getTimeMapGeneration(), graphModel.getAudioGeneration(), inputSampleRate,
+                                      getTotalNumInputChannels());
+    const auto now = juce::Time::getMillisecondCounter();
+    if (key != timeKey)
+    {
+        timeKey = key;
+        timeDirty = true;
+        timeChangedAt = now;
+    }
+    if (timeDirty && now - timeChangedAt >= 150) // debounce while dragging
+    {
+        timeDirty = false;
+        if (graphModel.getTimeMap().isIdentity())
+        {
+            ++timeJobCounter; // drop any render in flight
+            timeAudioMissing = false;
+            timePublisher.publish (nullptr, audioBlocksDone.load());
+        }
+        else
+            timeRenderer.request (makeTimeJob());
+    }
+
+    int id = -1;
+    if (auto rendered = timeRenderer.takeResult (id); id == timeJobCounter)
+    {
+        timeAudioMissing = rendered != nullptr && rendered->audioMissing;
+        timePublisher.publish (std::move (rendered), audioBlocksDone.load());
+    }
+    timePublisher.collect (audioBlocksDone.load());
 }
 
 void NovaPitchProcessor::processGraphMessages()
@@ -350,10 +442,19 @@ void NovaPitchProcessor::processGraphMessages()
     if ((wasCapturing && ! capturing) || (wasHostPlaying && ! playing))
     {
         graphModel.commitCapture();
+        audioCapture.endPass();
         lastDrainedTime = -1.0e9;
     }
     wasCapturing = capturing;
     wasHostPlaying = playing;
+
+    // Captured audio: folder of this instance, finished passes, time render.
+    if (const auto id = graphModel.getAudioId (false); id.isNotEmpty())
+        if (const auto dir = captureRoot.getChildFile (id); dir != audioCapture.getDirectory())
+            audioCapture.setDirectory (dir);
+    if (auto passes = audioCapture.takeFinishedPasses(); ! passes.empty())
+        graphModel.addAudioPasses (passes);
+    updateTimeRender();
 
     trackPublisher.collect (audioBlocksDone.load());
 }
@@ -376,12 +477,14 @@ void NovaPitchProcessor::readPlayHead() noexcept
         {
             if (const auto samples = position->getTimeInSamples(); samples.hasValue())
             {
+                blockHostSample = *samples;
                 blockHostTime = static_cast<double> (*samples) / inputSampleRate;
                 blockPlaying = true;
             }
             else if (const auto seconds = position->getTimeInSeconds(); seconds.hasValue())
             {
                 blockHostTime = *seconds;
+                blockHostSample = static_cast<int64_t> (std::llround (*seconds * inputSampleRate));
                 blockPlaying = true;
             }
         }
@@ -390,6 +493,7 @@ void NovaPitchProcessor::readPlayHead() noexcept
     if (blockPlaying)
         hostTimeSeconds.store (blockHostTime, std::memory_order_relaxed);
     blockTrack = trackPublisher.acquire();
+    blockTime = timePublisher.acquire();
 }
 
 void NovaPitchProcessor::applyLearnedScale()
@@ -711,6 +815,19 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
         for (int i = 0; i < numSamples; ++i)
             if (! std::isfinite (d[i]))
                 d[i] = 0.0f;
+    }
+
+    // Captured audio / time edits (whole block, host-timeline positions). While
+    // capturing, the live input is recorded and never replaced.
+    if (! bypassed && blockPlaying)
+    {
+        std::array<float*, dsp::PsolaShifter::kMaxChannels> io {};
+        for (int ch = 0; ch < numIn; ++ch)
+            io[static_cast<size_t> (ch)] = buffer.getWritePointer (ch);
+        if (captureRequested.load (std::memory_order_relaxed))
+            audioCapture.push (io.data(), numIn, numSamples, blockHostSample);
+        else if (graphModeOn && blockTime != nullptr && std::abs (blockTime->sampleRate - inputSampleRate) < 0.5)
+            blockTime->substitute (io.data(), numIn, numSamples, blockHostSample);
     }
 
     const float gain = 1.0f / static_cast<float> (numIn);

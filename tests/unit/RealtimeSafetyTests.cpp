@@ -113,6 +113,9 @@ TEST_CASE ("processBlock does not allocate in graphical mode (playback + capture
     JuceFixture fixture;
     const double sr = 48000.0;
     NovaPitchProcessor p;
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("NovaPitchRealtime-" + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64()));
+    p.setCaptureRoot (root); // never write into the user's capture folder
     TestPlayHead playHead;
     playHead.sampleRate = sr;
     p.setPlayHead (&playHead);
@@ -154,6 +157,66 @@ TEST_CASE ("processBlock does not allocate in graphical mode (playback + capture
     INFO (allocations << " allocations on the audio thread");
     CHECK (allocations == 0);
     p.setPlayHead (nullptr);
+    p.setGraphCapture (false);
+    p.flushGraphCapture();
+    root.deleteRecursively();
+}
+
+TEST_CASE ("processBlock does not allocate while playing time edits", "[realtime][time]")
+{
+    JuceFixture fixture;
+    const double sr = 48000.0;
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("NovaPitchRealtime-" + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64()));
+    NovaPitchProcessor p;
+    p.setCaptureRoot (root);
+    TestPlayHead playHead;
+    playHead.sampleRate = sr;
+    p.setPlayHead (&playHead);
+    p.prepareToPlay (sr, 512);
+
+    const auto sig = signals::concat ({ signals::sawtooth (233.0, sr, 0.8), signals::silence (sr, 0.1),
+                                        signals::sawtooth (311.0, sr, 0.8) });
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (11u);
+    std::uniform_int_distribution<int> sizes (1, 512);
+    auto run = [&] {
+        for (size_t pos = 0; pos < sig.size();)
+        {
+            const int n = static_cast<int> (std::min<size_t> (static_cast<size_t> (sizes (rng)), sig.size() - pos));
+            buffer.setSize (2, n, false, false, true);
+            buffer.copyFrom (0, 0, sig.data() + pos, n);
+            buffer.copyFrom (1, 0, sig.data() + pos, n);
+            playHead.timeInSamples = static_cast<int64_t> (pos);
+            p.processBlock (buffer, midi);
+            pos += static_cast<size_t> (n);
+        }
+    };
+
+    // Capture pass (warm-up), then a time edit rendered and played.
+    p.setGraphCapture (true);
+    run();
+    p.setGraphCapture (false);
+    p.flushGraphCapture();
+    REQUIRE (p.getGraphModel().getAudioPasses().size() == 1);
+    p.importGraphFromAuto();
+    dsp::TimeMap map;
+    map.anchors = { { 0.2, 0.2 }, { 0.65, 0.6 }, { 1.2, 1.2 } };
+    p.getGraphModel().setTimeMap (map);
+    setParam (p, ParamIDs::graphMode, 1.0f);
+    p.renderTimeEditsNow();
+
+    long allocations = 0;
+    {
+        AllocationGuard guard;
+        run();
+        allocations = guard.count();
+    }
+    INFO (allocations << " allocations on the audio thread");
+    CHECK (allocations == 0);
+    p.setPlayHead (nullptr);
+    root.deleteRecursively();
 }
 
 TEST_CASE ("The allocation counter detects allocations (self-test)", "[realtime]")

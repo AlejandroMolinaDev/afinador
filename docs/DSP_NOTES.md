@@ -372,3 +372,70 @@ detected pitch while the host plays and indexes it by the host timeline.
 - CPU (Linux container, 128-sample blocks, 200 notes, capture on): 1.8 % / 1.9 % / 2.4 % at
   44.1 / 48 / 96 kHz — the same as Tracking alone.
 
+## Phase 9 — key detection, instance sync, time correction
+
+### KeyDetector (`dsp/KeyDetector.h`)
+- Monophonic voice → the chromagram is a pitch-class histogram of the detected f0 frames, each weighted
+  by duration × stability (1 at the centre of a semitone, 0 at ±0.4 st: glides count little) × a gentle
+  level weight (10^(dB/40)).
+- Pearson correlation with the 24 rotated Krumhansl–Schmuckler profiles; best key wins. Confidence = margin
+  over the best key with different notes (the relative major/minor has the same notes, so for a tuner the
+  choice between them does not change the correction).
+- "Escuchar": the audio thread adds voiced frames to 12 relaxed atomics (single writer) until N voiced
+  seconds (10/20/30) are heard; the processor's timer then writes key + Major/Natural minor to the
+  parameters (message thread, with gestures). Also from the graphical mode's captured curve.
+- Tests: melodies in C, D major and A, G, D minor; a sung E major phrase through the processor sets
+  key = E, scale = Major.
+
+### Instance sync (`plugin/InstanceRegistry.h`)
+- In-process registry (one per plugin binary: VST3, CLAP and AU instances don't see each other). Thread-safe
+  (mutex); "Sincronizar" broadcasts key, scale, the 12 note states and A4; receivers store them under a
+  spin lock and apply them on their own message thread. Bridged instances (separate process) are alone
+  and the button is disabled with an explanation.
+
+### Captured audio (`plugin/graph/AudioCapture`)
+- While "Capturar" is on and the host plays, the input (1–2 channels, after NaN sanitising, before any
+  processing) goes through lock-free rings (4 s) + a header FIFO `{hostSample, n}` to a writer thread that
+  writes 24-bit WAV files, one per contiguous pass (a position jump starts a new pass). Full rings drop
+  the block (counted), never block.
+- Files live outside the project, per user: Windows `%LOCALAPPDATA%\NovaPitch\Captures\<audioId>`,
+  macOS `~/Library/Application Support/NovaPitch/Captures/<audioId>`, Linux
+  `~/.local/share/NovaPitch/Captures/<audioId>`. The state stores `audioId` and the pass list (plugin
+  state child `GraphAudio`); later passes win where they overlap. "Borrar la curva capturada" deletes them.
+- While capturing, substitution is off: the capture always records the original input.
+
+### Time map (`dsp/graph/TimeMap.h`) and model
+- Piecewise-linear monotonic anchors (out, src), identity outside, ≥ 20 ms apart on both axes; stored as
+  `Graph@warp` (undoable). Objects and the captured curve stay in **source time**; `compile()` maps them to
+  output time, so a pitch edit stays on its syllable when the syllable moves. Phase-8 projects = identity.
+- Editor "Tiempo" tool: a note's start/end become moving anchors, the previous note's start and the next
+  note's end become fixed anchors (neighbours absorb the change); body = move, edge = stretch. Alt+click
+  removes the edit around a note; "Quitar ediciones de tiempo" removes all (undoable).
+
+### Rendering (`plugin/graph/TimeRenderer`)
+- Background thread, 150 ms debounce after the last edit. Each warped range (+ 250 ms margins, merged) is
+  read from the WAV passes (resampled with Lagrange if the session rate changed) and run through
+  signalsmith-stretch (`presetDefault`, fixed seed) segment by segment with `process(in, srcLen, out,
+  outLen)` — pitch untouched.
+- Alignment: after `seek()` with the preceding audio, the output is delayed by inputLatency +
+  outputLatency. The breakpoints are shifted by the input latency on both axes, so an event at source time
+  s comes out at exactly toOutput(s) once that delay is removed (without the shift, events near anchors
+  were off by up to ~15 ms).
+- A phase vocoder keeps a phase offset after a stretch, so the switch back to the live input is placed at
+  the quietest 10 ms window of the margin (≥ 80 ms after the last edited anchor) — normally the breath gap
+  after the syllable. Before the edit the rendered audio equals the source (< −30 dB residual).
+- Published like the correction track (`Publisher<RenderedTime>`). During playback (graph mode, transport
+  running, not capturing) `RenderedTime::substitute` replaces the input sample-accurately by host position
+  with 10 ms crossfades; the whole chain (detection, objects, engines, harmonies) then processes it. The
+  project audio is never modified.
+
+### Measured
+- Attack moved 1.00 → 1.10 s: rendered at 1.1004 s; unedited attacks at 0.3007 / 1.9003 s; level of the
+  stretched syllable within 12 %; pitch within 5 c.
+- End to end (capture → import → move a syllable 100 ms and retune it to B3 → play): onset at 1.10 s + the
+  10 ms latency (± 8 ms), the moved syllable < 8 c from B3, the stretched one < 8 c from A3; the same after
+  save/reopen; undo restores the identity map; clearing deletes the WAV files.
+- 0 allocations on the audio thread while capturing audio and while playing time edits.
+- CPU (Linux container, 128-sample blocks): time-edit playback 2.6 / 2.1 / 2.4 % at 44.1 / 48 / 96 kHz
+  (Tracking alone ≈ 1.9 %). Rendering runs on its own thread.
+

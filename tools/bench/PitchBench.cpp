@@ -131,6 +131,8 @@ int main()
             proc.getGraphModel().addNote (n * 0.05, n * 0.05 + 0.04, 57.0f + static_cast<float> (n % 5));
         if (auto* param = proc.getValueTreeState().getParameter (ParamIDs::graphMode))
             param->setValueNotifyingHost (1.0f);
+        const auto captureRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("NovaPitchCaptures-tool");
+        proc.setCaptureRoot (captureRoot); // keep tool runs out of the user's capture folder
         proc.setGraphCapture (true);
         proc.prepareToPlay (sr, block);
         const auto sig = benchSignal (sr, seconds);
@@ -147,6 +149,45 @@ int main()
         });
         proc.processGraphMessages();
         proc.setPlayHead (nullptr);
+        std::printf ("  %6.1f kHz: %6.2f%% of one core\n", sr / 1000.0, pct);
+    }
+
+    // Time edits playing back (rendered audio substituted for the input).
+    std::printf ("\nTracking, graphical mode with time edits playing (substitution), stereo\n");
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        NovaPitchProcessor proc;
+        BenchPlayHead head;
+        proc.setPlayHead (&head);
+        const auto captureRoot = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("NovaPitchCaptures-bench");
+        proc.setCaptureRoot (captureRoot);
+        proc.prepareToPlay (sr, block);
+        const auto sig = benchSignal (sr, seconds);
+        juce::AudioBuffer<float> buffer (2, block);
+        juce::MidiBuffer midi;
+        auto play = [&] {
+            for (size_t pos = 0; pos + block <= sig.size(); pos += block)
+            {
+                head.samples = static_cast<int64_t> (pos);
+                buffer.copyFrom (0, 0, sig.data() + pos, block);
+                buffer.copyFrom (1, 0, sig.data() + pos, block);
+                proc.processBlock (buffer, midi);
+            }
+        };
+        proc.setGraphCapture (true);
+        play();
+        proc.setGraphCapture (false);
+        proc.flushGraphCapture();
+        proc.importGraphFromAuto();
+        dsp::TimeMap map; // stretch most of the take by 5 %
+        map.anchors = { { 0.5, 0.5 }, { seconds * 0.5 + 0.05, seconds * 0.5 }, { seconds - 0.5, seconds - 0.5 } };
+        proc.getGraphModel().setTimeMap (map);
+        if (auto* param = proc.getValueTreeState().getParameter (ParamIDs::graphMode))
+            param->setValueNotifyingHost (1.0f);
+        proc.renderTimeEditsNow();
+        const double pct = percentOfCore (seconds, play);
+        proc.setPlayHead (nullptr);
+        proc.clearGraphCapture();
         std::printf ("  %6.1f kHz: %6.2f%% of one core\n", sr / 1000.0, pct);
     }
     return 0;

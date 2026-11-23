@@ -89,8 +89,17 @@ void GraphModel::bind (juce::ValueTree pluginState)
     for (const auto& child : graph)
         nextId = std::max (nextId, static_cast<juce::int64> (child.getProperty (kId, 0)) + 1);
 
+    audioTree = pluginState.getChildWithName (GraphIds::audio);
+    if (! audioTree.isValid())
+    {
+        audioTree = juce::ValueTree (GraphIds::audio);
+        pluginState.appendChild (audioTree, nullptr);
+    }
+    ++audioGeneration;
+
     pending.clear();
     loadCaptured();
+    loadTimeMap();
     graph.addListener (this);
     undo.clearUndoHistory();
     changed();
@@ -145,6 +154,102 @@ void GraphModel::storeCaptured()
     ++generation;
     if (onCaptureChanged)
         onCaptureChanged();
+}
+
+void GraphModel::loadTimeMap()
+{
+    timeMap.anchors.clear();
+    if (const auto* mb = graph.getProperty (GraphIds::warp).getBinaryData())
+    {
+        const size_t n = mb->getSize() / (2 * sizeof (double));
+        const auto* d = static_cast<const char*> (mb->getData());
+        for (size_t i = 0; i < n; ++i)
+        {
+            double out, src;
+            std::memcpy (&out, d + i * 16, sizeof (double));
+            std::memcpy (&src, d + i * 16 + 8, sizeof (double));
+            timeMap.anchors.emplace_back (out, src);
+        }
+    }
+    if (! timeMap.isValid())
+        timeMap.anchors.clear();
+    ++timeMapGeneration;
+}
+
+void GraphModel::setTimeMap (const dsp::TimeMap& map)
+{
+    if (! graph.isValid() || ! map.isValid())
+        return;
+    juce::MemoryBlock mb;
+    for (const auto& [out, src] : map.anchors)
+    {
+        mb.append (&out, sizeof (double));
+        mb.append (&src, sizeof (double));
+    }
+    graph.setProperty (GraphIds::warp, mb, &undo); // listener reloads the map
+}
+
+void GraphModel::clearTimeEdits()
+{
+    if (graph.isValid() && graph.hasProperty (GraphIds::warp))
+        graph.removeProperty (GraphIds::warp, &undo);
+}
+
+juce::String GraphModel::getAudioId (bool create)
+{
+    auto id = audioTree.getProperty (GraphIds::audioId).toString();
+    if (id.isEmpty() && create && audioTree.isValid())
+    {
+        id = juce::Uuid().toDashedString();
+        audioTree.setProperty (GraphIds::audioId, id, nullptr);
+        ++audioGeneration;
+    }
+    return id;
+}
+
+std::vector<AudioPass> GraphModel::getAudioPasses() const
+{
+    std::vector<AudioPass> out;
+    for (const auto& p : audioTree)
+    {
+        AudioPass a;
+        a.fileName = p.getProperty (GraphIds::file).toString();
+        a.start = static_cast<juce::int64> (p.getProperty (GraphIds::start, 0));
+        a.length = static_cast<juce::int64> (p.getProperty (GraphIds::length, 0));
+        a.sampleRate = p.getProperty (GraphIds::rate, 48000.0);
+        a.channels = p.getProperty (GraphIds::channels, 1);
+        if (a.fileName.isNotEmpty() && a.length > 0 && a.sampleRate > 0.0)
+            out.push_back (a);
+    }
+    return out;
+}
+
+void GraphModel::addAudioPasses (const std::vector<AudioPass>& passes)
+{
+    if (! audioTree.isValid())
+        return;
+    for (const auto& a : passes)
+    {
+        juce::ValueTree p (GraphIds::pass);
+        p.setProperty (GraphIds::file, a.fileName, nullptr);
+        p.setProperty (GraphIds::start, static_cast<juce::int64> (a.start), nullptr);
+        p.setProperty (GraphIds::length, static_cast<juce::int64> (a.length), nullptr);
+        p.setProperty (GraphIds::rate, a.sampleRate, nullptr);
+        p.setProperty (GraphIds::channels, a.channels, nullptr);
+        audioTree.appendChild (p, nullptr); // later passes win where they overlap
+    }
+    ++audioGeneration;
+    ++generation;
+}
+
+std::vector<AudioPass> GraphModel::removeAudioPasses()
+{
+    auto passes = getAudioPasses();
+    if (audioTree.isValid())
+        audioTree.removeAllChildren (nullptr);
+    ++audioGeneration;
+    ++generation;
+    return passes;
 }
 
 void GraphModel::loadCaptured()
@@ -363,11 +468,12 @@ std::unique_ptr<dsp::CorrectionTrack> GraphModel::compile() const
     if (! graph.isValid())
         return track;
 
+    const auto& map = timeMap; // objects live in source time; the track is in output time
     for (const auto& t : graph)
     {
         dsp::CorrectionTrack::Segment s;
-        s.start = getD (t, kStart);
-        s.end = getD (t, kEnd);
+        s.start = map.toOutput (getD (t, kStart));
+        s.end = map.toOutput (getD (t, kEnd));
         if (t.hasType (kNote))
         {
             s.kind = dsp::CorrectionTrack::Kind::Note;
@@ -386,9 +492,11 @@ std::unique_ptr<dsp::CorrectionTrack> GraphModel::compile() const
         }
         else if (t.hasType (kCurve))
         {
-            const auto pts = readPoints (t);
+            auto pts = readPoints (t);
             if (pts.size() < 2)
                 continue;
+            for (auto& p : pts)
+                p.first = map.toOutput (p.first);
             s.kind = dsp::CorrectionTrack::Kind::Curve;
             s.curveOffset = static_cast<int> (track->curvePoints.size());
             s.curveCount = static_cast<int> (pts.size());

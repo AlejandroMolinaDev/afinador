@@ -304,6 +304,9 @@ TEST_CASE ("Graphical mode end to end: capture, import, edit, playback, save and
 
     auto p = makeProcessor (juce::AudioChannelSet::stereo(), juce::AudioChannelSet::stereo());
     REQUIRE (p != nullptr);
+    const auto captureRoot = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                 .getChildFile ("NovaPitchGraph-" + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64()));
+    p->setCaptureRoot (captureRoot); // never write into the user's capture folder
     TestPlayHead head;
     head.sampleRate = sr;
     p->setPlayHead (&head);
@@ -371,6 +374,7 @@ TEST_CASE ("Graphical mode end to end: capture, import, edit, playback, save and
 
     auto q = makeProcessor (juce::AudioChannelSet::stereo(), juce::AudioChannelSet::stereo());
     REQUIRE (q != nullptr);
+    q->setCaptureRoot (captureRoot);
     q->setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
     REQUIRE (q->getGraphModel().getObjects().getNumChildren() == 1);
     CHECK (static_cast<float> (q->getGraphModel().getObjects().getChild (0).getProperty (kPitchId)) == Approx (59.0f));
@@ -385,4 +389,6 @@ TEST_CASE ("Graphical mode end to end: capture, import, edit, playback, save and
     REQUIRE (model.getUndoManager().undo());
     CHECK (static_cast<float> (note.getProperty (kPitchId)) == Approx (57.0f));
     q->setPlayHead (nullptr);
+    p->flushGraphCapture();
+    captureRoot.deleteRecursively();
 }

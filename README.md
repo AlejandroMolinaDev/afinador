@@ -4,15 +4,20 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-![NovaPitch — Fase 8, modo gráfico](docs/img/fase8-grafico.png)
+![NovaPitch — Fase 9, modo gráfico con corrección temporal](docs/img/fase9-tiempo.png)
 
-**Estado:** Fase 8 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, 4 voces de armonía (diatónicas, semitonos o acordes MIDI), MIDI Target, aprender escala por MIDI y **modo gráfico sin ARA**: captura de la afinación reproduciendo la pista en FL Studio, importación a notas, edición de notas / líneas / curvas con deshacer ilimitado, todo guardado en el proyecto. Siguiente: corrección temporal, detector de tonalidad y ARA2 (Fase 9). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 9 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, 4 voces de armonía, MIDI Target, aprender escala por MIDI, **modo gráfico sin ARA** (captura reproduciendo en FL Studio, notas / líneas / curvas, deshacer ilimitado), **corrección temporal no destructiva**, **detector de tonalidad** («Escuchar») y **sincronización entre instancias**. ARA2 queda pospuesto (FL no lo soporta). Siguiente: instaladores y guía de usuario (Fase 10). Ver `docs/ROADMAP.md`.
 
 ### Modo gráfico en FL Studio (sin ARA)
 1. Botón **Gráfico** en la cabecera → **● Capturar** → reproduce la canción: la curva de afinación se dibuja.
 2. **Importar desde automático**: crea notas con la tonalidad y escala actuales.
 3. Edita con **Seleccionar / Nota / Línea / Curva / Borrar / Dividir** (clic derecho borra, Ctrl/Cmd+Z deshace). El inspector ajusta velocidad, vibrato y formante por nota.
 4. Reproduce: la voz sigue lo dibujado; fuera de los objetos o con el transporte parado pasa la voz original.
+5. **Tiempo**: arrastra una nota para mover la sílaba o sus bordes para estirarla (las vecinas se ajustan). Es no destructivo: el audio capturado se guarda en tu carpeta de usuario (`···` → *Abrir carpeta de capturas de audio*), nunca se modifica el audio del proyecto.
+
+### Tonalidad automática y varias pistas
+- **Escuchar** (junto a *Tonalidad*): escucha 10–30 s de voz y ajusta Tonalidad y Escala (también desde la captura del modo gráfico).
+- **Sincronizar** (junto a *Escala*): envía tonalidad, escala, notas y A4 a las demás instancias de NovaPitch del proyecto.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|

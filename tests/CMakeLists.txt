@@ -14,6 +14,7 @@ add_executable(NovaPitchTests
     unit/HarmonyMidiTests.cpp
     unit/GraphTests.cpp
     unit/KeySyncTests.cpp
+    unit/TimeEditTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )

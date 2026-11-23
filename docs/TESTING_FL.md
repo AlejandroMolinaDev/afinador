@@ -168,5 +168,22 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 84 | Rueda: tono · Mayús+rueda: tiempo · Ctrl/Cmd+rueda: zoom · pinza en trackpad (Mac) | | |
 | 85 | Varias pistas de voz con NovaPitch en modo gráfico a la vez | | |
 
+## Fase 9 — Tonalidad, sincronización y corrección temporal
+
+> Automático en CI: detección de tonalidad en melodías mayores/menores y en una frase cantada a través del plugin, sincronización entre 3 instancias, mapa de tiempo, render (ataque movido a ± 0,4 ms, audio sin editar idéntico, cambio a la voz en vivo en la pausa, tono intacto), captura de audio a WAV por pasadas, extremo a extremo (capturar → mover una sílaba 100 ms → oírla movida y afinada → reabrir) y 0 asignaciones en tiempo real.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 86 | **Escuchar** (junto a Tonalidad) 10 s mientras suena la voz: Tonalidad y Escala cambian solas; el pie muestra la tonalidad detectada | | |
+| 87 | Escuchar → *Desde la captura del modo gráfico* da la misma tonalidad | | |
+| 88 | Dos pistas con NovaPitch: cambiar la tonalidad en una y pulsar **Sincronizar** → la otra cambia | | |
+| 89 | Con el plugin en modo *bridged* (proceso aparte), Sincronizar aparece desactivado con su explicación | | |
+| 90 | Modo gráfico: Capturar + reproducir; `···` → *Abrir carpeta de capturas* muestra los WAV | | |
+| 91 | Herramienta **Tiempo**: arrastrar una nota (mover la sílaba) y un borde (estirarla); al reproducir se oye movida, sin clics en los bordes | | |
+| 92 | Alt+clic en la nota editada deshace su edición; *Limpiar → Quitar ediciones de tiempo*; *Deshacer* | | |
+| 93 | Guardar, cerrar FL y reabrir el proyecto: las ediciones de tiempo siguen sonando | | |
+| 94 | Mover el proyecto a otro equipo (o borrar la carpeta de capturas): aviso «Falta el audio capturado», el resto del modo gráfico funciona | | |
+| 95 | CPU con ediciones de tiempo sonando (*Performance monitor*) | | |
+
 ## Notas / incidencias encontradas
 - 

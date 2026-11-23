@@ -74,6 +74,13 @@ public:
         const auto p = plot();
         return p.getX() + static_cast<float> ((t - viewStart) / viewLength) * p.getWidth();
     }
+    /** x of a source-time position (objects and the captured curve live in source time). */
+    float xs (double sourceTime) const { return xOf (model.getTimeMap().toOutput (sourceTime)); }
+    /** Source time under x. */
+    double sOf (float x) const { return model.getTimeMap().toSource (tOf (x)); }
+    /** End of the visible range in source time. */
+    double sourceViewEnd() const { return model.getTimeMap().toSource (viewStart + viewLength + 0.05); }
+
     double tOf (float x) const
     {
         const auto p = plot();
@@ -158,11 +165,13 @@ public:
         };
         for (const auto* frames : { &model.getCaptured(), &model.getPendingCapture() })
             for (const auto& f : *frames)
-                add (f.time, f.midi);
+                add (model.getTimeMap().toOutput (f.time), f.midi);
         for (const auto& o : model.getObjects())
         {
-            add (getD (o, GraphIds::start), getF (o, GraphIds::pitch, -1.0f));
-            add (getD (o, GraphIds::end), o.hasType (GraphIds::line) ? getF (o, GraphIds::endPitch) : getF (o, GraphIds::pitch, -1.0f));
+            const auto& map = model.getTimeMap();
+            add (map.toOutput (getD (o, GraphIds::start)), getF (o, GraphIds::pitch, -1.0f));
+            add (map.toOutput (getD (o, GraphIds::end)),
+                 o.hasType (GraphIds::line) ? getF (o, GraphIds::endPitch) : getF (o, GraphIds::pitch, -1.0f));
         }
         return any;
     }
@@ -294,10 +303,11 @@ public:
             const float base = pl.getBottom(), height = 24.0f;
             juce::Path p;
             bool started = false;
-            for (auto it = visibleBegin (frames); it != frames.end() && it->time <= viewStart + viewLength + 0.05; ++it)
+            const double srcEnd = sourceViewEnd();
+            for (auto it = visibleBegin (frames); it != frames.end() && it->time <= srcEnd; ++it)
             {
                 const float level = std::clamp ((it->rmsDb + 60.0f) / 60.0f, 0.0f, 1.0f);
-                const float x = xOf (it->time), y = base - level * height;
+                const float x = xs (it->time), y = base - level * height;
                 if (! started)
                 {
                     p.startNewSubPath (x, base);
@@ -323,14 +333,15 @@ public:
             const auto begin = visibleBegin (frames);
             const auto count = std::distance (begin, frames.end());
             const size_t stride = static_cast<size_t> (std::max<long> (1, static_cast<long> (count) / static_cast<long> (pl.getWidth() * 3.0f)));
-            for (auto it = begin; it < frames.end() && it->time <= viewStart + viewLength + 0.05;
+            const double srcEnd = sourceViewEnd();
+            for (auto it = begin; it < frames.end() && it->time <= srcEnd;
                  it += static_cast<long> (std::min<size_t> (stride, static_cast<size_t> (frames.end() - it))))
             {
                 if (it->midi < 0.0f || it->time - last > 0.03 * static_cast<double> (stride))
                     open = false;
                 if (it->midi >= 0.0f)
                 {
-                    const float x = xOf (it->time), y = yOf (it->midi);
+                    const float x = xs (it->time), y = yOf (it->midi);
                     if (open)
                         p.lineTo (x, y);
                     else
@@ -350,7 +361,8 @@ public:
             juce::Path p;
             bool open = false;
             const auto begin = visibleBegin (captured);
-            for (auto it = begin; it != captured.end() && it->time <= viewStart + viewLength + 0.05; ++it)
+            const double srcEnd = sourceViewEnd();
+            for (auto it = begin; it != captured.end() && it->time <= srcEnd; ++it)
             {
                 const float out = owner.predicted[static_cast<size_t> (it - captured.begin())];
                 if (out < 0.0f)
@@ -358,7 +370,7 @@ public:
                     open = false;
                     continue;
                 }
-                const float x = xOf (it->time), y = yOf (out);
+                const float x = xs (it->time), y = yOf (out);
                 if (open)
                     p.lineTo (x, y);
                 else
@@ -374,7 +386,8 @@ public:
         for (const auto& o : model.getObjects())
         {
             const bool selected = selection.count (getId (o)) > 0;
-            const double s = getD (o, GraphIds::start), e = getD (o, GraphIds::end);
+            const double s = model.getTimeMap().toOutput (getD (o, GraphIds::start));
+            const double e = model.getTimeMap().toOutput (getD (o, GraphIds::end));
             if (e < viewStart || s > viewStart + viewLength)
                 continue;
 
@@ -419,7 +432,7 @@ public:
                 juce::Path p;
                 for (size_t i = 0; i < pts.size(); ++i)
                 {
-                    const float x = xOf (pts[i].first), y = yOf (pts[i].second);
+                    const float x = xs (pts[i].first), y = yOf (pts[i].second);
                     if (i == 0)
                         p.startNewSubPath (x, y);
                     else
@@ -439,14 +452,14 @@ public:
         if (drag == Drag::LineDraw)
         {
             g.setColour (accent.withAlpha (0.8f));
-            g.drawLine ({ xOf (lineT0), yOf (lineP0), xOf (lineT1), yOf (lineP1) }, 3.0f);
+            g.drawLine ({ xs (lineT0), yOf (lineP0), xs (lineT1), yOf (lineP1) }, 3.0f);
         }
         else if (drag == Drag::CurveDraw && drawn.size() > 1)
         {
             juce::Path p;
-            p.startNewSubPath (xOf (drawn.front().first), yOf (drawn.front().second));
+            p.startNewSubPath (xs (drawn.front().first), yOf (drawn.front().second));
             for (size_t i = 1; i < drawn.size(); ++i)
-                p.lineTo (xOf (drawn[i].first), yOf (drawn[i].second));
+                p.lineTo (xs (drawn[i].first), yOf (drawn[i].second));
             g.setColour (accent.withAlpha (0.8f));
             g.strokePath (p, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
@@ -456,6 +469,21 @@ public:
             g.fillRect (rubber);
             g.setColour (accent.withAlpha (0.7f));
             g.drawRect (rubber, 1.0f);
+        }
+
+        // Time-edit anchors (ruler markers)
+        for (const auto& [out, src] : model.getTimeMap().anchors)
+        {
+            const float x = xOf (out);
+            if (x < pl.getX() - 6.0f || x > pl.getRight() + 6.0f)
+                continue;
+            const bool moved = std::abs (out - src) > 1.0e-6;
+            g.setColour (moved ? Palette::warn : Palette::textMuted.withAlpha (0.6f));
+            juce::Path marker;
+            marker.addTriangle (x - 4.0f, pl.getY() + 14.0f, x + 4.0f, pl.getY() + 14.0f, x, pl.getY() + 20.0f);
+            g.fillPath (marker);
+            g.setColour (Palette::warn.withAlpha (moved ? 0.25f : 0.0f));
+            g.drawVerticalLine (juce::roundToInt (x), pl.getY() + 20.0f, pl.getBottom());
         }
 
         // Playhead
@@ -489,7 +517,7 @@ public:
     {
         owner.grabKeyboardFocus();
         const auto pos = e.position;
-        const double t = tOf (pos.x);
+        const double t = sOf (pos.x); // source time: objects follow their audio
         const float p = pOf (pos.y);
         dragStartTime = t;
         dragStartPitch = p;
@@ -514,6 +542,14 @@ public:
 
         model.beginEdit();
         const auto tool = owner.tool;
+
+        if (tool == Tool::Time)
+        {
+            if (hit.object.isValid() && hit.object.hasType (GraphIds::note))
+                beginTimeEdit (hit.object, hit.mode, e.mods.isAltDown(), pos.x);
+            repaint();
+            return;
+        }
 
         if (tool == Tool::Select || ((tool == Tool::Note || tool == Tool::Line) && hit.object.isValid()))
         {
@@ -577,8 +613,14 @@ public:
     void mouseDrag (const juce::MouseEvent& e) override
     {
         const auto pos = e.position;
-        const double t = tOf (pos.x);
+        const double t = sOf (pos.x);
         const float p = pOf (pos.y);
+
+        if (drag == Drag::TimeEdit)
+        {
+            dragTimeEdit (tOf (pos.x) - timeDragStartOut);
+            return;
+        }
 
         switch (drag)
         {
@@ -648,7 +690,7 @@ public:
             {
                 rubber = juce::Rectangle<float> (e.mouseDownPosition, pos);
                 selection = rubberBase;
-                const double t0 = tOf (rubber.getX()), t1 = tOf (rubber.getRight());
+                const double t0 = sOf (rubber.getX()), t1 = sOf (rubber.getRight());
                 const float pHi = pOf (rubber.getY()), pLo = pOf (rubber.getBottom());
                 for (const auto& o : model.getObjects())
                 {
@@ -676,6 +718,7 @@ public:
             case Drag::Erase:
                 eraseAt (pos);
                 break;
+            case Drag::TimeEdit: // handled above
             case Drag::None:
                 break;
         }
@@ -707,7 +750,14 @@ public:
     {
         const auto tool = owner.tool;
         auto newCursor = juce::MouseCursor::NormalCursor;
-        if (tool == Tool::Select || tool == Tool::Note || tool == Tool::Line)
+        if (tool == Tool::Time)
+        {
+            const auto hit = hitObject (e.position);
+            if (hit.object.isValid() && hit.object.hasType (GraphIds::note))
+                newCursor = (hit.mode == Drag::ResizeLeft || hit.mode == Drag::ResizeRight) ? juce::MouseCursor::LeftRightResizeCursor
+                                                                                           : juce::MouseCursor::DraggingHandCursor;
+        }
+        else if (tool == Tool::Select || tool == Tool::Note || tool == Tool::Line)
         {
             const auto hit = hitObject (e.position);
             if (hit.mode == Drag::ResizeLeft || hit.mode == Drag::ResizeRight)
@@ -753,7 +803,114 @@ public:
     }
 
 private:
-    enum class Drag { None, Move, ResizeLeft, ResizeRight, LineStart, LineEnd, Create, LineDraw, CurveDraw, Rubber, Erase };
+    enum class Drag { None, Move, ResizeLeft, ResizeRight, LineStart, LineEnd, Create, LineDraw, CurveDraw, Rubber, Erase, TimeEdit };
+
+    //==============================================================================
+    // Time tool: a note's start/end become anchors of the time map; the previous
+    // note's start and the next note's end stay fixed, so the neighbours absorb
+    // the change. Body = move the syllable, edge = stretch / compress it.
+    static void ensureAnchor (dsp::TimeMap& map, double src)
+    {
+        for (const auto& a : map.anchors)
+            if (std::abs (a.second - src) < 1.0e-6)
+                return;
+        const double out = map.toOutput (src);
+        auto it = std::lower_bound (map.anchors.begin(), map.anchors.end(), src,
+                                    [] (const std::pair<double, double>& a, double s) { return a.second < s; });
+        map.anchors.insert (it, { out, src });
+    }
+
+    /** Removes identity anchors that only separate identity segments. */
+    static void simplify (dsp::TimeMap& map)
+    {
+        auto identity = [] (const std::pair<double, double>& a) { return std::abs (a.first - a.second) < 1.0e-9; };
+        for (size_t i = 0; i < map.anchors.size();)
+        {
+            const bool prevId = i == 0 || identity (map.anchors[i - 1]);
+            const bool nextId = i + 1 >= map.anchors.size() || identity (map.anchors[i + 1]);
+            if (identity (map.anchors[i]) && prevId && nextId)
+                map.anchors.erase (map.anchors.begin() + static_cast<long> (i));
+            else
+                ++i;
+        }
+        if (map.isIdentity())
+            map.anchors.clear();
+    }
+
+    void beginTimeEdit (const juce::ValueTree& note, Drag mode, bool reset, float mouseX)
+    {
+        const double start = getD (note, GraphIds::start), end = getD (note, GraphIds::end);
+        double fixedLeft = std::max (0.0, start - 0.5), fixedRight = end + 0.5;
+        for (const auto& o : model.getObjects())
+        {
+            if (! o.hasType (GraphIds::note) || o == note)
+                continue;
+            const double s0 = getD (o, GraphIds::start), s1 = getD (o, GraphIds::end);
+            if (s0 < start && s0 > fixedLeft - 1.0e-9)
+                fixedLeft = std::max (fixedLeft, s0);
+            if (s1 > end && s1 < fixedRight + 1.0e-9)
+                fixedRight = std::min (fixedRight, s1);
+        }
+        if (fixedLeft >= start - dsp::TimeMap::kMinSpacing)
+            fixedLeft = std::max (0.0, start - 0.25);
+        if (fixedRight <= end + dsp::TimeMap::kMinSpacing)
+            fixedRight = end + 0.25;
+
+        auto map = model.getTimeMap();
+        // Edits inside this region are replaced by the new one (Alt: just removed).
+        map.anchors.erase (std::remove_if (map.anchors.begin(), map.anchors.end(),
+                                           [&] (const auto& a) { return a.second > fixedLeft + 1.0e-6 && a.second < fixedRight - 1.0e-6; }),
+                           map.anchors.end());
+        if (reset)
+        {
+            simplify (map);
+            model.beginEdit (u8 ("Deshacer edición de tiempo"));
+            model.setTimeMap (map);
+            return;
+        }
+        ensureAnchor (map, fixedLeft);
+        ensureAnchor (map, fixedRight);
+        movingSources.clear();
+        if (mode != Drag::ResizeRight)
+            movingSources.push_back (start);
+        if (mode != Drag::ResizeLeft)
+            movingSources.push_back (end);
+        for (double src : movingSources)
+            ensureAnchor (map, src);
+        timeBaseMap = map;
+        timeDragStartOut = tOf (mouseX);
+        drag = Drag::TimeEdit;
+        model.beginEdit (u8 ("Edición de tiempo")); // the map is written on the first drag
+    }
+
+    void dragTimeEdit (double dt)
+    {
+        auto map = timeBaseMap;
+        auto isMoving = [this] (double src) {
+            return std::any_of (movingSources.begin(), movingSources.end(), [src] (double m) { return std::abs (m - src) < 1.0e-6; });
+        };
+        // Clamp dt so every moved anchor keeps its distance to the fixed ones.
+        double lo = -1.0e9, hi = 1.0e9;
+        for (size_t i = 0; i < map.anchors.size(); ++i)
+        {
+            if (! isMoving (map.anchors[i].second))
+                continue;
+            if (i > 0 && ! isMoving (map.anchors[i - 1].second))
+                lo = std::max (lo, map.anchors[i - 1].first + dsp::TimeMap::kMinSpacing - map.anchors[i].first);
+            if (i + 1 < map.anchors.size() && ! isMoving (map.anchors[i + 1].second))
+                hi = std::min (hi, map.anchors[i + 1].first - dsp::TimeMap::kMinSpacing - map.anchors[i].first);
+        }
+        dt = std::clamp (dt, lo, hi);
+        for (auto& a : map.anchors)
+            if (isMoving (a.second))
+                a.first += dt;
+        simplify (map);
+        model.setTimeMap (map);
+    }
+
+    dsp::TimeMap timeBaseMap;
+    std::vector<double> movingSources;
+    double timeDragStartOut = 0.0;
 
     struct Hit
     {
@@ -768,14 +925,14 @@ private:
     }
     std::vector<CaptureFrame>::const_iterator visibleBegin (const std::vector<CaptureFrame>& frames) const
     {
-        auto it = visibleBeginImpl (frames, viewStart - 0.05);
+        auto it = visibleBeginImpl (frames, model.getTimeMap().toSource (viewStart - 0.05));
         return it == frames.begin() ? it : it - 1;
     }
 
     juce::Rectangle<float> noteRect (const juce::ValueTree& o) const
     {
         const float pitch = getF (o, GraphIds::pitch);
-        const float x0 = xOf (getD (o, GraphIds::start)), x1 = xOf (getD (o, GraphIds::end));
+        const float x0 = xs (getD (o, GraphIds::start)), x1 = xs (getD (o, GraphIds::end));
         return juce::Rectangle<float>::leftTopRightBottom (x0, yOf (pitch + 0.5f), std::max (x1, x0 + 2.0f), yOf (pitch - 0.5f)).reduced (0.0f, 1.0f);
     }
 
@@ -800,8 +957,8 @@ private:
             }
             if (o.hasType (GraphIds::line))
             {
-                const juce::Point<float> a (xOf (getD (o, GraphIds::start)), yOf (getF (o, GraphIds::pitch)));
-                const juce::Point<float> b (xOf (getD (o, GraphIds::end)), yOf (getF (o, GraphIds::endPitch)));
+                const juce::Point<float> a (xs (getD (o, GraphIds::start)), yOf (getF (o, GraphIds::pitch)));
+                const juce::Point<float> b (xs (getD (o, GraphIds::end)), yOf (getF (o, GraphIds::endPitch)));
                 if (pos.getDistanceFrom (a) < 7.0f)
                     return { o, Drag::LineStart };
                 if (pos.getDistanceFrom (b) < 7.0f)
@@ -816,8 +973,8 @@ private:
                 const auto pts = GraphModel::readCurvePoints (o);
                 for (size_t k = 1; k < pts.size(); ++k)
                 {
-                    const juce::Point<float> a (xOf (pts[k - 1].first), yOf (pts[k - 1].second));
-                    const juce::Point<float> b (xOf (pts[k].first), yOf (pts[k].second));
+                    const juce::Point<float> a (xs (pts[k - 1].first), yOf (pts[k - 1].second));
+                    const juce::Point<float> b (xs (pts[k].first), yOf (pts[k].second));
                     juce::Point<float> nearest;
                     if (juce::Line<float> (a, b).getDistanceFromPoint (pos, nearest) < 6.0f)
                         return { o, Drag::Move };
@@ -858,7 +1015,7 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
     roll = std::make_unique<Roll> (*this);
     addAndMakeVisible (*roll);
 
-    const char* toolNames[] = { "Seleccionar", "Nota", "Línea", "Curva", "Borrar", "Dividir" };
+    const char* toolNames[] = { "Seleccionar", "Nota", "Línea", "Curva", "Borrar", "Dividir", "Tiempo" };
     const char* toolTips[] = {
         "Seleccionar y mover (Mayús: añadir a la selección). Arrastra los bordes de una nota para cambiar su duración. "
         "Las notas se mueven por semitonos; con Alt, libremente. Clic derecho: borrar.",
@@ -866,7 +1023,9 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
         "Dibuja una línea recta de afinación (deslizamientos entre notas). Alt: sin ajustar a semitonos.",
         "Dibuja a mano alzada la curva de afinación exacta.",
         "Borra los objetos que toques o arrastres.",
-        "Divide una nota en el punto donde hagas clic." };
+        "Divide una nota en el punto donde hagas clic.",
+        "Corrección de tiempo (no destructiva): arrastra una nota para mover la sílaba o sus bordes para estirarla; "
+        "las notas vecinas se ajustan. Alt+clic en una nota deshace su edición. Requiere la captura de audio." };
     for (int i = 0; i < kNumTools; ++i)
     {
         auto& b = toolButtons[static_cast<size_t> (i)];
@@ -894,8 +1053,9 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
     redoButton.onClick = [this] { model.getUndoManager().redo(); };
 
     captureButton.setButtonText (u8 ("● Capturar"));
-    captureButton.setTooltip (u8 ("Mientras está activo, la afinación detectada se registra cuando FL Studio reproduce. "
-                                  "Volver a capturar un tramo reemplaza solo ese tramo."));
+    captureButton.setTooltip (u8 ("Mientras está activo, se registran la afinación y el audio de la voz cuando FL Studio "
+                                  "reproduce (el audio se guarda en tu carpeta de usuario, no en el proyecto). Volver a "
+                                  "capturar un tramo reemplaza solo ese tramo."));
     captureButton.setClickingTogglesState (true);
     captureButton.onClick = [this] { processor.setGraphCapture (captureButton.getToggleState()); };
     importButton.setButtonText (u8 ("Importar desde automático"));
@@ -1060,6 +1220,8 @@ void GraphEditor::showClearMenu()
     menu.addItem (1, u8 ("Borrar todos los objetos"), model.getObjects().getNumChildren() > 0);
     menu.addItem (2, u8 ("Borrar la curva capturada"), ! model.getCaptured().empty());
     menu.addItem (3, u8 ("Borrar todo"));
+    menu.addSeparator();
+    menu.addItem (4, u8 ("Quitar ediciones de tiempo"), ! model.getTimeMap().isIdentity());
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (clearButton), [this] (int result) {
         if (result == 1 || result == 3)
         {
@@ -1068,7 +1230,12 @@ void GraphEditor::showClearMenu()
             roll->selection.clear();
         }
         if (result == 2 || result == 3)
-            model.clearCaptured();
+            processor.clearGraphCapture(); // pitch curve + captured audio files
+        if (result == 3 || result == 4)
+        {
+            model.beginEdit (u8 ("Quitar ediciones de tiempo"));
+            model.clearTimeEdits();
+        }
     });
 }
 
@@ -1083,6 +1250,10 @@ juce::String GraphEditor::buildInfoText() const
                         + juce::String (model.getObjects().getNumChildren()) + u8 (" objetos");
     if (processor.isGraphCapturing())
         text = (processor.isHostPlaying() ? u8 ("Capturando… · ") : u8 ("Esperando reproducción · ")) + text;
+    else if (processor.isTimeAudioMissing())
+        text = u8 ("Falta el audio capturado: vuelve a capturar para oír las ediciones de tiempo · ") + text;
+    else if (! model.getTimeMap().isIdentity() && processor.isRenderingTime())
+        text = u8 ("Renderizando tiempo… · ") + text;
     return text;
 }
 
@@ -1127,7 +1298,7 @@ void GraphEditor::updatePrediction()
     {
         const auto& f = frames[i];
         dsp::CorrectionTrack::Result r;
-        if (f.midi < 0.0f || ! track->lookup (f.time, r))
+        if (f.midi < 0.0f || ! track->lookup (model.getTimeMap().toOutput (f.time), r)) // the track is in output time
         {
             active = false;
             continue;
@@ -1198,10 +1369,10 @@ void GraphEditor::refresh()
 void GraphEditor::resized()
 {
     auto row1 = juce::Rectangle<int> (0, 0, getWidth(), 28);
-    for (auto& b : toolButtons)
-        b.setBounds (row1.removeFromLeft (84).reduced (2, 0));
+    for (size_t i = 0; i < toolButtons.size(); ++i)
+        toolButtons[i].setBounds (row1.removeFromLeft (i == 0 ? 86 : 70).reduced (2, 0));
     row1.removeFromLeft (8);
-    mergeButton.setBounds (row1.removeFromLeft (64).reduced (2, 0));
+    mergeButton.setBounds (row1.removeFromLeft (58).reduced (2, 0));
     redoButton.setBounds (row1.removeFromRight (66).reduced (2, 0));
     undoButton.setBounds (row1.removeFromRight (70).reduced (2, 0));
 

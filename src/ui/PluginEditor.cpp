@@ -409,6 +409,7 @@ void PluginEditor::showOptionsMenu()
     menu.addSubMenu (u8 ("Color de acento"), accents);
     menu.addItem (1, u8 ("Abrir carpeta de presets"));
     menu.addItem (2, u8 ("Borrar preset de usuario «") + current + u8 ("»"), currentIsUser);
+    menu.addItem (4, u8 ("Abrir carpeta de capturas de audio (modo gráfico)"));
     menu.addSeparator();
     menu.addItem (3, u8 ("Quitar todas las asignaciones MIDI"));
 
@@ -426,6 +427,11 @@ void PluginEditor::showOptionsMenu()
                                 refreshPresetBox();
                             else if (result == 3)
                                 processor.getMidiLearn().clearAll();
+                            else if (result == 4)
+                            {
+                                processor.getCaptureRoot().createDirectory();
+                                processor.getCaptureRoot().startAsProcess();
+                            }
                         });
 }
 
