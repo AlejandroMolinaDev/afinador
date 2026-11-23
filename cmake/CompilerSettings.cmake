@@ -8,7 +8,8 @@
 
 function(novapitch_apply_compiler_settings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /utf-8 /MP)
+        # /bigobj: signalsmith-linear/stretch are template-heavy
+        target_compile_options(${target} PRIVATE /utf-8 /MP /bigobj)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra)
     endif()

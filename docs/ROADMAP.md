@@ -7,7 +7,7 @@ Estado por fases (ver especificación original, sección 11).
 | 1 | Esqueleto: CMake + JUCE 8, VST3/AU/CLAP/Standalone passthrough, CI Win/Mac/Linux, pluginval | ✅ Hecho (prueba manual en FL pendiente) |
 | 2 | PitchDetector (YIN/MPM) + perfiles + voicing + medidor de afinación | ✅ Hecho (prueba manual en FL pendiente) |
 | 3 | NoteMapper + CorrectionCurve + PSOLA (Live/Tracking) + transposición + mezcla + latencia | ✅ Hecho (prueba manual en FL pendiente) |
-| 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ⏳ |
+| 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ✅ Hecho (prueba manual en FL pendiente) |
 | 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ⏳ |
 | 6 | UI completa + presets + redimensionado + MIDI Learn | ⏳ |
 | 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ⏳ |
@@ -36,10 +36,15 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] Compensar el retardo de detección (≈ media ventana + mediana) alineando el control con el audio en Tracking/HQ (hoy el control llega ~5–10 ms tarde: suaviza ligeramente los ataques con velocidad 0).
 - [ ] Modo Live: retardo extra de hasta ~1 periodo en partes con voz (documentado en DSP_NOTES); valorar ventanas asimétricas más cortas.
 - [ ] Teclado de 12 notas en la UI (estados Activa/Ignorar/Eliminar): los parámetros `noteState0..11` ya existen y son automatizables; el componente visual llega en la Fase 6.
-- [ ] HQ (signalsmith-stretch) y Vintage reales: Fase 4 (hoy HQ = Tracking, Vintage = Live + ajustes hard tune).
+- [x] HQ (signalsmith-stretch) y Vintage reales (Fase 4).
 
 ### Fase 4
-- [ ] Añadir submódulo `signalsmith-stretch`.
+- [x] Submódulos `signalsmith-stretch` 1.4.0 y `signalsmith-linear` 0.6.4 (sin FetchContent).
+- [ ] Prueba de escucha en FL (Windows y Mac) de HQ, Vintage y formantes — `docs/TESTING_FL.md`, sección Fase 4.
+- [ ] Cambio de modo a/desde HQ sin hueco: hoy el motor nuevo arranca desde cero (~100 ms de silencio y fundido). Opción: alimentar ambos motores durante un crossfade corto.
+- [ ] CPU de HQ a 96/192 kHz (11–23 % de un núcleo en Linux): procesar HQ a una frecuencia interna de 48 kHz con re-muestreo, o bloque/intervalo escalados.
+- [ ] Sesgo residual de HQ en transposiciones grandes hacia arriba (~+2 ¢ a +12 st). Investigar con signalsmith (peak mapping) o compensar con la frecuencia detectada.
+- [ ] Formant shift en PSOLA con factores > 2 (p. ej. +12 st + carácter): los granos dejan de solaparse y el sonido se vuelve "zumbante"; documentar o limitar en la UI.
 
 ### Fase 6
 - [ ] Guardar el tamaño de la ventana del editor en el estado del plugin.

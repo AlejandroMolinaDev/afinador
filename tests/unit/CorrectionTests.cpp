@@ -11,7 +11,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <tuple>
 #include <vector>
+
+#include <juce_dsp/juce_dsp.h>
 
 using namespace novapitch;
 using namespace novapitch::test;
@@ -94,7 +97,7 @@ TEST_CASE ("A note +35 cents sharp is corrected to < 5 cents", "[correction]")
 {
     JuceFixture fixture;
     const double sr = GENERATE (44100.0, 48000.0, 96000.0);
-    const int mode = GENERATE (0, 1, 3); // Live, Tracking, Vintage
+    const int mode = GENERATE (0, 1, 2, 3); // Live, Tracking, HQ, Vintage
     const float speed = GENERATE (0.0f, 20.0f);
 
     NovaPitchProcessor p;
@@ -148,14 +151,29 @@ TEST_CASE ("Reference A4 = 432 Hz is respected", "[correction]")
 TEST_CASE ("Transposition shifts the corrected pitch", "[correction]")
 {
     JuceFixture fixture;
+    const int mode = GENERATE (1, 2); // Tracking (PSOLA), HQ
     for (const int st : { -12, -5, 7, 12 })
     {
         NovaPitchProcessor p;
+        setParam (p, ParamIDs::qualityMode, static_cast<float> (mode));
         setParam (p, ParamIDs::transpose, static_cast<float> (st));
         const auto out = runProcessor (p, signals::sawtooth (220.0, 48000.0, 1.0), 48000.0);
         const float expected = 220.0f * std::exp2 (static_cast<float> (st) / 12.0f);
-        const float err = maxAbsCentsAfter (analyse (out, 48000.0), 0.3, expected);
-        INFO ("transpose " << st << " error " << err);
+        const auto frames = analyse (out, 48000.0);
+        const float err = maxAbsCentsAfter (frames, 0.3, expected);
+
+        std::vector<float> errors;
+        for (const auto& f : frames)
+            if (f.t >= 0.3 && f.hz > 0.0f)
+                errors.push_back (std::abs (dsp::centsBetween (f.hz, expected)));
+        REQUIRE_FALSE (errors.empty());
+        std::nth_element (errors.begin(), errors.begin() + static_cast<long> (errors.size() / 2), errors.end());
+        const float median = errors[errors.size() / 2];
+
+        INFO ("mode " << mode << " transpose " << st << " max error " << err << " median " << median);
+        // HQ (phase vocoder) keeps a small systematic bias on large upward shifts
+        // (~+2 c at +12 st, see docs/DSP_NOTES.md); PSOLA is exact.
+        CHECK (median < (mode == 2 ? 3.0f : 1.0f));
         CHECK (err < 5.0f);
     }
 }
@@ -263,4 +281,130 @@ TEST_CASE ("Measured latency equals reported latency in every mode", "[correctio
     INFO ("sr=" << sr << " mode=" << mode);
     CHECK (measured == p.getLatencySamples());
     CHECK (std::abs (*peak) > 0.8f);
+}
+
+//==============================================================================
+namespace
+{
+/** Vowel-like test signal: harmonic source through two formant resonators. */
+std::vector<float> vowel (float f0, double sr, double seconds)
+{
+    auto src = signals::harmonicSweep (sr, seconds, std::vector<float> (40, 0.05f), [f0] (double) { return f0; });
+    std::vector<float> out (src.size(), 0.0f);
+    for (const auto& [fc, bw, g] : { std::tuple { 700.0, 90.0, 1.0f }, std::tuple { 1200.0, 110.0, 0.6f } })
+    {
+        const double r = std::exp (-3.14159265 * bw / sr), th = 2.0 * 3.14159265 * fc / sr;
+        const double a1 = -2.0 * r * std::cos (th), a2 = r * r;
+        double y1 = 0.0, y2 = 0.0;
+        for (size_t i = 0; i < src.size(); ++i)
+        {
+            const double y = (1.0 - r) * src[i] - a1 * y1 - a2 * y2;
+            y2 = y1;
+            y1 = y;
+            out[i] += g * static_cast<float> (y);
+        }
+    }
+    float peak = 0.0f;
+    for (auto v : out)
+        peak = std::max (peak, std::abs (v));
+    for (auto& v : out)
+        v *= 0.5f / peak;
+    return out;
+}
+
+/** Spectral centroid (Hz) of the second half of the signal, up to 5 kHz. */
+/** No pitch correction at all (every note "Ignore"): isolates formant / transposition behaviour. */
+void ignoreAllNotes (NovaPitchProcessor& p)
+{
+    for (int pc = 0; pc < 12; ++pc)
+        setParam (p, ParamIDs::noteState (pc), 2.0f);
+}
+
+double centroid (const std::vector<float>& x, double sr)
+{
+    constexpr int order = 14, n = 1 << order;
+    juce::dsp::FFT fft (order);
+    std::vector<float> buf (2 * n, 0.0f);
+    const size_t start = x.size() - static_cast<size_t> (n) - 1000;
+    for (int i = 0; i < n; ++i)
+        buf[static_cast<size_t> (i)] = x[start + static_cast<size_t> (i)]
+                                       * static_cast<float> (0.5 - 0.5 * std::cos (2.0 * 3.14159265 * i / n));
+    fft.performFrequencyOnlyForwardTransform (buf.data(), true);
+    double num = 0.0, den = 0.0;
+    for (int k = 1; k < n / 2; ++k)
+    {
+        const double f = k * sr / n;
+        if (f > 5000.0)
+            break;
+        const double p = static_cast<double> (buf[static_cast<size_t> (k)]) * buf[static_cast<size_t> (k)];
+        num += f * p;
+        den += p;
+    }
+    return num / den;
+}
+} // namespace
+
+TEST_CASE ("Formants are preserved under transposition, or follow it when preservation is off", "[formant]")
+{
+    JuceFixture fixture;
+    const int mode = GENERATE (1, 2); // PSOLA (Tracking), HQ
+    const double sr = 48000.0;
+    const auto in = vowel (150.0f, sr, 1.5);
+    const double cIn = centroid (in, sr);
+
+    for (const bool preserve : { true, false })
+    {
+        NovaPitchProcessor p;
+        setParam (p, ParamIDs::qualityMode, static_cast<float> (mode));
+        setParam (p, ParamIDs::transpose, 7.0f);
+        setParam (p, ParamIDs::formantPreserve, preserve ? 1.0f : 0.0f);
+        ignoreAllNotes (p);
+        const auto out = runProcessor (p, in, sr);
+        const double ratio = centroid (out, sr) / cIn;
+        const double expected = preserve ? 1.0 : std::exp2 (7.0 / 12.0); // 1.0 or ~1.5
+        INFO ("mode " << mode << " preserve " << preserve << " centroid ratio " << ratio);
+        CHECK (std::abs (ratio / expected - 1.0) < 0.15);
+        // pitch is transposed either way
+        CHECK (maxAbsCentsAfter (analyse (out, sr), 0.4, 150.0f * std::exp2 (7.0f / 12.0f)) < 8.0f);
+    }
+}
+
+TEST_CASE ("Formant shift moves the spectral envelope without changing pitch", "[formant]")
+{
+    JuceFixture fixture;
+    const int mode = GENERATE (1, 2);
+    const double sr = 48000.0;
+    const auto in = vowel (180.0f, sr, 1.5);
+    const double cIn = centroid (in, sr);
+
+    for (const float shift : { -5.0f, 5.0f })
+    {
+        NovaPitchProcessor p;
+        setParam (p, ParamIDs::qualityMode, static_cast<float> (mode));
+        setParam (p, ParamIDs::formantShift, shift);
+        ignoreAllNotes (p);
+        const auto out = runProcessor (p, in, sr);
+        const double ratio = centroid (out, sr) / cIn;
+        INFO ("mode " << mode << " shift " << shift << " centroid ratio " << ratio);
+        CHECK ((shift > 0 ? ratio > 1.12 : ratio < 0.88));
+        CHECK (maxAbsCentsAfter (analyse (out, sr), 0.4, 180.0f) < 8.0f);
+    }
+}
+
+TEST_CASE ("Character scales the envelope (+50 % up, -50 % down)", "[formant]")
+{
+    JuceFixture fixture;
+    const double sr = 48000.0;
+    const auto in = vowel (160.0f, sr, 1.5);
+    const double cIn = centroid (in, sr);
+    for (const float character : { -40.0f, 40.0f })
+    {
+        NovaPitchProcessor p;
+        setParam (p, ParamIDs::character, character);
+        ignoreAllNotes (p);
+        const auto out = runProcessor (p, in, sr);
+        const double ratio = centroid (out, sr) / cIn;
+        INFO ("character " << character << " centroid ratio " << ratio);
+        CHECK ((character > 0 ? ratio > 1.12 : ratio < 0.88));
+    }
 }

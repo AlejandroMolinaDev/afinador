@@ -2,19 +2,19 @@
 
 Technical notes, measurements and design decisions for the DSP modules.
 
-## Latency per mode (phase 3, measured = reported)
+## Latency per mode (phase 4, measured = reported)
 
 | Mode | Engine | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz |
 |---|---|---|---|---|---|
 | Live | PSOLA, 3 ms | 132 (3.0 ms) | 144 (3.0 ms) | 288 (3.0 ms) | 576 (3.0 ms) |
 | Tracking (default) | PSOLA, 10 ms | 441 (10 ms) | 480 (10 ms) | 960 (10 ms) | 1920 (10 ms) |
-| HQ | phase 4 — uses Tracking for now | 441 | 480 | 960 | 1920 |
-| Vintage | phase 4 — Live engine + hard settings for now | 132 | 144 | 288 | 576 |
+| HQ | signalsmith-stretch, 90 ms block + 10 ms interval | 4410 (100 ms) | 4800 (100 ms) | 9600 (100 ms) | 19200 (100 ms) |
+| Vintage | PSOLA, dry grains, 3 ms | 132 | 144 | 288 | 576 |
 
 Values in samples. `tests/unit/CorrectionTests.cpp` measures them with an impulse for every mode at
-44.1 / 48 / 96 kHz (measured == reported, exactly), and `tools/hosttest` re-checks on the built
-binary in CI. The dry path in `mix` and in bypass is delayed by the same amount, so FL's PDC keeps
-everything aligned.
+44.1 / 48 / 96 kHz (measured == reported, exactly), and `tools/hosttest` re-checks every mode on the
+built binary in CI. The dry path in `mix` and in bypass is delayed by the same amount, so FL's PDC
+keeps everything aligned.
 
 **Live mode note:** with 3 ms of lookahead, a grain often has to come from the previous pitch
 period, so voiced parts get up to ~1 extra period of delay (≈ 2.3 ms at 440 Hz, ≈ 8 ms at 120 Hz)
@@ -156,3 +156,60 @@ Synthetic source-filter "sung" phrase, out of tune by −30…+40 cents, A minor
 
 ### CPU (phase 3, whole processBlock, stereo, Tracking, Linux container)
 44.1 kHz 1.62 % · 48 kHz 1.66 % · 96 kHz 2.00 % · 192 kHz 2.23 % of one core (budget: Live < 3 %).
+
+---
+
+## Phase 4 — formants, HQ engine, Vintage
+
+### Formant parameters → factors
+- `formantPreserve` (default on), `formantShift` (±12 st), `formantLink`, `character` (±50 %).
+- Static factor F = 2^(shift/12) · (1 + character/100) · (preserve && link ? 2^(transpose/12) : 1).
+- PSOLA: grain resampling factor fr = preserve ? F : F · pitchRatio (formants follow the pitch:
+  "chipmunk"). Grains are read at e + (x − s)·fr with linear interpolation; window half-length in
+  the output = grainScale · period / fr. A look-ahead guard keeps every source sample inside what
+  has already arrived when fr > 1.
+- HQ: `setFormantFactor (F, compensatePitch = preserve)` + `setFormantBase (f0 / fs)` when voiced.
+  **Units matter:** signalsmith wants the base frequency normalised to the sample rate — passing Hz
+  silently disabled formant handling (bug found by the formant tests, fixed).
+- Vintage forces preserve off (formants follow the pitch), grainScale 0.7 (shorter, drier grains:
+  windows no longer overlap fully → classic "buzzier" hard-tune texture), speed 0, no tolerance/hold.
+
+### Measured (spectral centroid of a 2-formant vowel, ratio output/input)
+| Test | Expected | PSOLA | HQ |
+|---|---|---|---|
+| transpose +7, preserve on | 1.00 | 0.98 | 0.97 |
+| transpose +7, preserve off | 1.50 | 1.49 | 1.49 |
+| formant shift −5 st | 0.75 | 0.75 | 0.74 |
+| formant shift +5 st | 1.33 | 1.32 | 1.45 |
+| character −40 % / +40 % (PSOLA) | 0.60 / 1.40 | 0.61 / 1.39 | — |
+
+### HqShifter — `src/dsp/HqShifter.{h,cpp}`
+- signalsmith-stretch 1.4.0 (MIT), `configure (channels, 0.09·fs, 0.01·fs, splitComputation = true)`:
+  computation spread over calls (no CPU spikes with FL's small buffers). Latency = input + output
+  latency of the STFT = 100 ms at every sample rate.
+- Block size choice (measured, ratio 2 / 1.5 / 0.5, formant compensation on):
+  45 ms → +4.1 / +2.6 / −1.7 cents · 70 ms → +2.2 / +1.4 / −0.4 · **90 ms → +1.5 / +0.9 / −0.05** ·
+  105 ms → +1.3 / +0.8 / −0.2. Shorter blocks reduce frequency resolution and bias the shifted pitch.
+  90 ms keeps the spec's 50–120 ms latency. Residual: ~+2 c median at +12 st in the full chain
+  (PSOLA: < 0.4 c); max error < 5 c in every transposition test.
+- Transposition with an 8 kHz tonality limit (keeps breath and sibilance natural); unvoiced → ratio 1.
+- Controls are cached and re-applied after `reset()` (engine switch).
+- Engine switch at runtime (Tracking ↔ HQ): the newly active engine is reset → ~latency of silence
+  then fade-in. Acceptable for a mode change; see ROADMAP.
+
+### Real-time safety (all modes)
+`tests/unit/RealtimeSafetyTests.cpp` replaces the global `operator new` in the test executable and
+counts allocations on the audio thread during `processBlock` (random block sizes, voiced + noise,
+transpose and formant shift active): **0 allocations in Live, Tracking, HQ and Vintage**. A
+self-test checks that the counter does detect allocations.
+
+### CPU (phase 4, whole processBlock, stereo, 128-sample blocks, Linux container, generic FFT)
+| Mode | 44.1 kHz | 48 kHz | 96 kHz | 192 kHz |
+|---|---|---|---|---|
+| Live | 1.8 % | 2.3 % | 2.4 % | 3.2 % |
+| Tracking | 1.8 % | 1.8 % | 2.5 % | 3.3 % |
+| HQ | 4.9 % | 5.5 % | 10.9 % | 22.6 % |
+| Vintage | 1.7 % | 1.9 % | 2.2 % | 3.3 % |
+
+HQ scales with the sample rate (STFT); macOS builds use Accelerate (faster). HQ is meant for mixing /
+export, not live monitoring.

@@ -239,6 +239,28 @@ void runAll (const juce::String& path, bool withEditor)
                 "reported " + juce::String (reported) + ", measured " + juce::String (measured));
     }
 
+    // 2b. Every processing mode (the "Modo" parameter) reports its own latency ----
+    juce::AudioProcessorParameter* modeParam = nullptr;
+    for (auto* param : plugin->getParameters())
+        if (param->getName (64) == "Modo")
+            modeParam = param;
+    report ("mode parameter found", modeParam != nullptr && modeParam->getNumSteps() == 4);
+    if (modeParam != nullptr)
+    {
+        const char* modeNames[] = { "Live", "Tracking", "HQ", "Vintage" };
+        for (int m = 0; m < 4; ++m)
+        {
+            modeParam->setValueNotifyingHost (static_cast<float> (m) / 3.0f);
+            prepare (*plugin, 48000.0, 256);
+            const int reported = plugin->getLatencySamples();
+            const int measured = measureLatency (*plugin, 48000.0, 256);
+            plugin->releaseResources();
+            report (juce::String ("latency in mode ") + modeNames[m], reported > 0 && std::abs (measured - reported) <= 1,
+                    "reported " + juce::String (reported) + " (" + juce::String (1000.0 * reported / 48000.0, 1)
+                        + " ms), measured " + juce::String (measured));
+        }
+    }
+
     // 3. Bypass toggled while playing -----------------------------------------
     {
         prepare (*plugin, 48000.0, 512);

@@ -46,6 +46,15 @@ public:
         ratio: output / input frequency ratio (clamped to 0.25..4). */
     void setControl (bool voiced, float periodSamples, float ratio) noexcept;
 
+    /** Spectral-envelope (formant) factor applied by resampling each grain:
+        1 = formants preserved (classic PSOLA), > 1 = formants up, < 1 = down.
+        Pass the pitch ratio to get "chipmunk" (formants follow pitch). */
+    void setFormantFactor (float factor) noexcept;
+
+    /** Grain half-length relative to the analysis period (1 = classic ±1 period;
+        < 1 = shorter, "drier" grains as used by the Vintage mode). */
+    void setGrainScale (float scale) noexcept;
+
     /** Dry/wet mix 0..1 (smoothed). The dry path is delayed by the latency. */
     void setMix (float mix01) noexcept { mixTarget = mix01 < 0.0f ? 0.0f : (mix01 > 1.0f ? 1.0f : mix01); }
 
@@ -58,8 +67,10 @@ private:
     {
         int64_t s = 0;  // synthesis mark (output timeline == input timeline)
         int64_t e = 0;  // analysis epoch the grain is taken from
-        int left = 1;   // window half-length before s
-        int right = 1;  // window half-length after s
+        int left = 1;   // window half-length before s (output samples)
+        int right = 1;  // window half-length after s (output samples)
+        float fr = 1.0f; // formant (resampling) factor: source = e + (x - s) * fr
+        bool resampled = false;
     };
 
     static constexpr int kMaxGrains = 32;
@@ -89,6 +100,8 @@ private:
     bool voiced = false;
     float period = 0.0f;
     float ratio = 1.0f;
+    float formantFactor = 1.0f;
+    float grainScale = 1.0f;
 
     // Epochs (ring)
     std::array<int64_t, kMaxEpochs> epochPos {};

@@ -93,4 +93,27 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
 };
 
+/** On/off switch (drawn by NovaLookAndFeel::drawToggleButton) attached to an
+    APVTS bool parameter. */
+class LabeledToggle final : public juce::Component
+{
+public:
+    LabeledToggle (juce::AudioProcessorValueTreeState& state, const juce::String& paramId,
+                   const juce::String& caption, const juce::String& tooltip)
+    {
+        button.setButtonText (caption);
+        button.setTooltip (tooltip);
+        addAndMakeVisible (button);
+        attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (state, paramId, button);
+    }
+
+    void resized() override { button.setBounds (getLocalBounds()); }
+
+    juce::ToggleButton& getButton() noexcept { return button; }
+
+private:
+    juce::ToggleButton button;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
+};
+
 } // namespace novapitch

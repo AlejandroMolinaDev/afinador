@@ -67,12 +67,18 @@ TEST_CASE ("Dry path (mix 0) is the input delayed by the reported latency, any b
     CHECK (equalsDelayed (input, 1, output, 1, latency));
 }
 
-TEST_CASE ("Latency per mode: Live ~3 ms, Tracking ~10 ms", "[processor][latency]")
+TEST_CASE ("Latency per mode: Live ~3 ms, Tracking ~10 ms, HQ 50-120 ms", "[processor][latency]")
 {
     CHECK (NovaPitchProcessor::latencyForMode (QualityMode::Live, 48000.0) == 144);
     CHECK (NovaPitchProcessor::latencyForMode (QualityMode::Vintage, 48000.0) == 144);
     CHECK (NovaPitchProcessor::latencyForMode (QualityMode::Tracking, 48000.0) == 480);
-    CHECK (NovaPitchProcessor::latencyForMode (QualityMode::HQ, 48000.0) == 480);
+    for (const double sr : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+        const double hqMs = 1000.0 * NovaPitchProcessor::latencyForMode (QualityMode::HQ, sr) / sr;
+        INFO ("HQ latency at " << sr << ": " << hqMs << " ms");
+        CHECK (hqMs >= 50.0); // spec: ~50-120 ms
+        CHECK (hqMs <= 120.0);
+    }
     CHECK (NovaPitchProcessor::latencyForMode (QualityMode::Live, 44100.0) == 132);
 }
 

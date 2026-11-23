@@ -68,6 +68,10 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.mix = get (ParamIDs::mix);
     for (int pc = 0; pc < 12; ++pc)
         params.noteStates[static_cast<size_t> (pc)] = get (ParamIDs::noteState (pc));
+    params.formantPreserve = get (ParamIDs::formantPreserve);
+    params.formantShift = get (ParamIDs::formantShift);
+    params.formantLink = get (ParamIDs::formantLink);
+    params.character = get (ParamIDs::character);
 
     pitchDetector.setListener (this);
 
@@ -82,15 +86,16 @@ NovaPitchProcessor::~NovaPitchProcessor()
 }
 
 //==============================================================================
-int NovaPitchProcessor::latencyForMode (QualityMode mode, double sampleRate) noexcept
+int NovaPitchProcessor::latencyForMode (QualityMode mode, double sampleRate)
 {
     switch (mode)
     {
         case QualityMode::Live:
         case QualityMode::Vintage:
             return static_cast<int> (std::lround (kLiveLatencySeconds * sampleRate));
-        case QualityMode::Tracking:
         case QualityMode::HQ:
+            return dsp::HqShifter::computeLatency (sampleRate);
+        case QualityMode::Tracking:
             break;
     }
     return static_cast<int> (std::lround (kTrackingLatencySeconds * sampleRate));
@@ -118,12 +123,19 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     correctionCurve.prepare (pitchDetector.getFrameRate());
     noteMapper.reset();
     shifter.prepare (sampleRate, latencyForMode (QualityMode::Tracking, sampleRate) + 16);
+    hqShifter.prepare (sampleRate, juce::jlimit (1, dsp::HqShifter::kMaxChannels, getTotalNumInputChannels()), kControlBlock);
+
+    for (int m = 0; m < kNumQualityModes; ++m)
+        modeLatency[static_cast<size_t> (m)] = m == static_cast<int> (QualityMode::HQ)
+                                                   ? hqShifter.getLatency()
+                                                   : latencyForMode (static_cast<QualityMode> (m), sampleRate);
 
     updateDspFromParameters();
     shifter.reset();
+    hqShifter.reset();
 
     // prepareToPlay runs outside the audio callback: report latency right away.
-    const int latency = shifter.getLatency();
+    const int latency = modeLatency[static_cast<size_t> (blockMode)];
     desiredLatency.store (latency);
     if (latency != getLatencySamples())
         setLatencySamples (latency); // FL Studio uses this for plugin delay compensation
@@ -137,6 +149,7 @@ void NovaPitchProcessor::reset()
     correctionCurve.reset();
     noteMapper.reset();
     shifter.reset();
+    hqShifter.reset();
 }
 
 void NovaPitchProcessor::timerCallback()
@@ -175,14 +188,36 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
     }
     correctionCurve.setSettings (s);
 
-    shifter.setMix (params.mix->load (std::memory_order_relaxed) / 100.0f);
+    // Formants: shift x character (x transposition when linked). With "preserve"
+    // off (and always in Vintage) the formants also follow the pitch ratio.
+    formantPreserve = params.formantPreserve->load (std::memory_order_relaxed) > 0.5f && blockMode != QualityMode::Vintage;
+    formantLink = params.formantLink->load (std::memory_order_relaxed) > 0.5f;
+    formantStaticFactor = std::exp2 (params.formantShift->load (std::memory_order_relaxed) / 12.0f)
+                          * (1.0f + params.character->load (std::memory_order_relaxed) / 100.0f)
+                          * (formantPreserve && formantLink ? std::exp2 (transposeSemitones / 12.0f) : 1.0f);
+    hqShifter.setFormant (formantStaticFactor, formantPreserve);
+    shifter.setGrainScale (blockMode == QualityMode::Vintage ? kVintageGrainScale : 1.0f);
 
-    const int latency = latencyForMode (blockMode, inputSampleRate);
-    if (latency != shifter.getLatency())
+    const float mixValue = params.mix->load (std::memory_order_relaxed) / 100.0f;
+    shifter.setMix (mixValue);
+    hqShifter.setMix (mixValue);
+
+    // Engine + latency (RT-safe; the host is told from the message thread).
+    const bool wantHq = blockMode == QualityMode::HQ;
+    if (wantHq != hqActive)
     {
-        shifter.setLatency (latency);   // RT-safe, fades in
-        desiredLatency.store (latency); // host is told from the message thread (timer)
+        hqActive = wantHq;
+        if (hqActive)
+            hqShifter.reset();
+        else
+            shifter.reset();
     }
+
+    const int latency = modeLatency[static_cast<size_t> (blockMode)];
+    if (! hqActive && latency != shifter.getLatency())
+        shifter.setLatency (latency); // fades in
+    if (latency != desiredLatency.load (std::memory_order_relaxed))
+        desiredLatency.store (latency);
 }
 
 void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
@@ -199,8 +234,16 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     const float correction = correctionCurve.process (voiced, detectedMidi, target);
     const float totalCents = correction + 100.0f * transposeSemitones;
     const float ratio = std::exp2 (totalCents / 1200.0f);
-    const float period = voiced ? static_cast<float> (inputSampleRate / e.frequencyHz) : 0.0f;
-    shifter.setControl (voiced, period, ratio);
+    if (hqActive)
+    {
+        hqShifter.setControl (voiced, e.frequencyHz, ratio);
+    }
+    else
+    {
+        const float period = voiced ? static_cast<float> (inputSampleRate / e.frequencyHz) : 0.0f;
+        shifter.setControl (voiced, period, ratio);
+        shifter.setFormantFactor (formantPreserve ? formantStaticFactor : formantStaticFactor * ratio);
+    }
 
     PitchFrame frame;
     frame.timeSeconds = static_cast<double> (e.sampleIndex) / inputSampleRate;
@@ -245,7 +288,11 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
     }
 
     if (bypassed)
-        shifter.setMix (0.0f); // smoothed: dry, still delayed by the latency (keeps PDC aligned)
+    {
+        // Smoothed to dry, still delayed by the latency (keeps FL's PDC aligned).
+        shifter.setMix (0.0f);
+        hqShifter.setMix (0.0f);
+    }
 
     // Sanitise the input: a single NaN/Inf would otherwise poison filters and delay lines.
     for (int ch = 0; ch < numIn; ++ch)
@@ -268,13 +315,22 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
             juce::FloatVectorOperations::addWithMultiply (monoScratch.data(), buffer.getReadPointer (ch, start), gain, n);
 
         if (! bypassed)
-            pitchDetector.process (monoScratch.data(), n); // -> pitchFrameReady -> shifter control
+        {
+            pitchDetector.process (monoScratch.data(), n); // -> pitchFrameReady -> engine control
+        }
         else
+        {
             shifter.setControl (false, 0.0f, 1.0f);
+            hqShifter.setControl (false, 0.0f, 1.0f);
+        }
 
         for (int ch = 0; ch < numIn; ++ch)
             channels[static_cast<size_t> (ch)] = buffer.getWritePointer (ch, start);
-        shifter.process (channels.data(), numIn, monoScratch.data(), n);
+
+        if (hqActive)
+            hqShifter.process (channels.data(), numIn, n);
+        else
+            shifter.process (channels.data(), numIn, monoScratch.data(), n);
     }
 
     // Mono -> Stereo: duplicate; any other extra output channel is cleared.

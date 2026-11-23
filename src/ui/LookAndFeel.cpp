@@ -97,4 +97,31 @@ juce::Font NovaLookAndFeel::getPopupMenuFont()
     return juce::Font (juce::FontOptions (14.0f));
 }
 
+void NovaLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
+{
+    // Pill switch on the left, caption on the right.
+    const auto bounds = button.getLocalBounds().toFloat();
+    const auto track = juce::Rectangle<float> (34.0f, 18.0f).withCentre ({ bounds.getX() + 18.0f, bounds.getCentreY() });
+    const bool on = button.getToggleState();
+    const auto trackColour = on ? accent : Palette::grid;
+
+    g.setColour (button.isEnabled() ? trackColour : Palette::grid);
+    g.fillRoundedRectangle (track, 9.0f);
+    if (highlighted)
+    {
+        g.setColour (Palette::textPrimary.withAlpha (0.25f));
+        g.drawRoundedRectangle (track, 9.0f, 1.0f);
+    }
+
+    const float d = 14.0f;
+    const float cx = on ? track.getRight() - 2.0f - d * 0.5f : track.getX() + 2.0f + d * 0.5f;
+    g.setColour (Palette::textPrimary);
+    g.fillEllipse (juce::Rectangle<float> (d, d).withCentre ({ cx, track.getCentreY() }));
+
+    g.setColour (button.isEnabled() ? Palette::textPrimary : Palette::textMuted);
+    g.setFont (juce::FontOptions (13.0f));
+    g.drawText (button.getButtonText(), bounds.withTrimmedLeft (track.getRight() + 10.0f - bounds.getX()),
+                juce::Justification::centredLeft);
+}
+
 } // namespace novapitch

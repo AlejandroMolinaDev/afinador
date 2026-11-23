@@ -42,8 +42,9 @@ juce::String channelName (int n)
 const juce::Rectangle<int> kMeterBounds   { 20, 76, 470, 222 };
 const juce::Rectangle<int> kSidePanel     { 506, 76, 234, 222 };
 const juce::Rectangle<int> kKnobPanel     { 20, 312, 720, 138 };
-const juce::Rectangle<int> kTraceBounds   { 20, 462, 720, 110 };
-const juce::Rectangle<int> kFooterBounds  { 20, 580, 720, 16 };
+const juce::Rectangle<int> kFormantPanel  { 20, 462, 720, 118 };
+const juce::Rectangle<int> kTraceBounds   { 20, 592, 720, 110 };
+const juce::Rectangle<int> kFooterBounds  { 20, 710, 720, 16 };
 } // namespace
 
 //==============================================================================
@@ -73,8 +74,9 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::scale, u8 ("Escala"),
         u8 ("Notas válidas. Cromática = las 12 notas. Las notas fuera de escala se redirigen a la vecina válida.")));
     combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::qualityMode, u8 ("Modo"),
-        u8 ("Live: latencia mínima (~3 ms) para directo. Tracking: ~10 ms, más preciso para grabar y mezclar. "
-            "HQ y Vintage: motores de la Fase 4 (por ahora usan Tracking y Live).")));
+        u8 ("Live: latencia mínima (~3 ms) para directo. Tracking: ~10 ms, preciso para grabar. "
+            "HQ: motor de alta calidad (~55 ms) para mezcla y exportación. "
+            "Vintage: efecto hard tune clásico, granos secos y formantes sin procesar.")));
     combos.push_back (std::make_unique<LabeledCombo> (state, ParamIDs::inputProfile, u8 ("Perfil de entrada"),
         u8 ("Rango de frecuencias en el que se busca la nota. Un rango ajustado reduce errores de octava.")));
     for (auto& c : combos)
@@ -100,6 +102,23 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     knobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::referenceA4, u8 ("Referencia A4"),
         u8 ("Frecuencia del La 4 (400–480 Hz). 440 Hz es el estándar.")));
     for (auto& k : knobs)
+        content.addAndMakeVisible (*k);
+
+    // Formants -------------------------------------------------------------------
+    formantToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::formantPreserve, u8 ("Preservar formantes"),
+        u8 ("Mantiene el timbre de la voz al cambiar el tono (evita la voz de \"ardilla\" o de \"monstruo\"). "
+            "Desactívalo para que los formantes sigan al tono. En modo Vintage siempre está desactivado.")));
+    formantToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::formantLink, u8 ("Enlazar a transposición"),
+        u8 ("Los formantes se mueven junto con la Transposición (diseño vocal creativo), mientras la "
+            "corrección de afinación sigue sin alterar el timbre.")));
+    formantKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::formantShift, u8 ("Desplazar"),
+        u8 ("Desplaza los formantes ±12 semitonos sin cambiar la afinación: voz más aguda/infantil (+) "
+            "o más grave/oscura (−).")));
+    formantKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::character, u8 ("Carácter"),
+        u8 ("Escala la envolvente espectral ±50 %: simula un tracto vocal más corto (+) o más largo (−).")));
+    for (auto& t : formantToggles)
+        content.addAndMakeVisible (*t);
+    for (auto& k : formantKnobs)
         content.addAndMakeVisible (*k);
 
     meter.setAccent (lookAndFeel.getAccent());
@@ -206,6 +225,16 @@ void PluginEditor::Content::resized()
     const int w = row.getWidth() / static_cast<int> (owner.knobs.size());
     for (auto& k : owner.knobs)
         k->setBounds (row.removeFromLeft (w).reduced (4, 0));
+
+    // Formant row: [caption][toggles][knob][knob]
+    auto formants = kFormantPanel.reduced (16, 10);
+    formants.removeFromLeft (130); // caption, painted
+    auto toggles = formants.removeFromLeft (240).withSizeKeepingCentre (240, 64);
+    for (auto& t : owner.formantToggles)
+        t->setBounds (toggles.removeFromTop (32));
+    formants.removeFromLeft (20);
+    for (auto& k : owner.formantKnobs)
+        k->setBounds (formants.removeFromLeft (w).reduced (4, 0));
 }
 
 void PluginEditor::Content::paint (juce::Graphics& g)
@@ -235,17 +264,26 @@ void PluginEditor::Content::paint (juce::Graphics& g)
 
     g.setColour (Palette::textMuted);
     g.setFont (juce::FontOptions (12.0f));
-    g.drawText (u8 ("v") + NOVAPITCH_VERSION_STRING + u8 ("  ·  Fase 3: corrección"),
+    g.drawText (u8 ("v") + NOVAPITCH_VERSION_STRING + u8 ("  ·  Fase 4: formantes y HQ"),
                 header.withRight (badge.getX() - 14.0f), juce::Justification::centredRight);
 
     // Panel backgrounds -----------------------------------------------------------
-    for (const auto& r : { kSidePanel.toFloat(), kKnobPanel.toFloat() })
+    for (const auto& r : { kSidePanel.toFloat(), kKnobPanel.toFloat(), kFormantPanel.toFloat() })
     {
         g.setColour (Palette::panel);
         g.fillRoundedRectangle (r, 10.0f);
         g.setColour (Palette::panelOutline);
         g.drawRoundedRectangle (r.reduced (0.5f), 10.0f, 1.0f);
     }
+
+    // Formant panel caption
+    auto caption = kFormantPanel.toFloat().reduced (16.0f, 14.0f).withWidth (130.0f);
+    g.setColour (Palette::textMuted);
+    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    g.drawText (u8 ("FORMANTES"), caption.removeFromTop (18.0f), juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (11.0f));
+    g.drawFittedText (u8 ("Timbre de la voz, independiente de la afinación"), caption.removeFromTop (44.0f).toNearestInt(),
+                      juce::Justification::topLeft, 3);
 
     // Footer: host diagnostics ------------------------------------------------
     g.setColour (Palette::textMuted.withAlpha (0.8f));

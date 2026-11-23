@@ -8,6 +8,7 @@ add_executable(NovaPitchTests
     unit/NoteMapperCurveTests.cpp
     unit/PsolaShifterTests.cpp
     unit/CorrectionTests.cpp
+    unit/RealtimeSafetyTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )

@@ -131,6 +131,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         layout.add (makeChoice (ParamIDs::noteState (pc), (std::string ("Nota ") + noteNames[static_cast<size_t> (pc)]).c_str(),
                                 toStringArray (dsp::kNoteStateNames), 0));
 
+    // ---- Phase 4 ------------------------------------------------------------
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::formantPreserve, 1 }, u8 ("Preservar formantes"), true));
+
+    layout.add (makeFloat (ParamIDs::formantShift, "Desplazar formantes", -12.0f, 12.0f, 0.1f, 0.0f, "st",
+                           [] (float v) { return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " st"; }));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::formantLink, 1 }, u8 ("Enlazar formantes a transposición"), false));
+
+    layout.add (makeFloat (ParamIDs::character, "Carácter", -50.0f, 50.0f, 0.1f, 0.0f, "%",
+                           [] (float v) { return (v > 0.5f ? "+" : "") + juce::String (juce::roundToInt (v)) + " %"; }));
+
     return layout;
 }
 

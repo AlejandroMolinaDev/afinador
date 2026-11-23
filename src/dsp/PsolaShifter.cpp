@@ -80,6 +80,16 @@ void PsolaShifter::setControl (bool isVoiced, float periodSamples, float newRati
     ratio = std::isfinite (newRatio) ? std::clamp (newRatio, 0.25f, 4.0f) : 1.0f;
 }
 
+void PsolaShifter::setFormantFactor (float factor) noexcept
+{
+    formantFactor = std::isfinite (factor) ? std::clamp (factor, 0.25f, 4.0f) : 1.0f;
+}
+
+void PsolaShifter::setGrainScale (float scale) noexcept
+{
+    grainScale = std::isfinite (scale) ? std::clamp (scale, 0.5f, 1.0f) : 1.0f;
+}
+
 float PsolaShifter::rise (float u) const noexcept
 {
     const float pos = std::clamp (u, 0.0f, 1.0f) * static_cast<float> (kWindowTableSize);
@@ -179,9 +189,17 @@ void PsolaShifter::createGrains (int64_t x) noexcept
 
         int64_t e = g.s;
         float p = static_cast<float> (unvoicedPeriod);
-        if (voiced && findEpoch (g.s, g.s + latency, e, p) && e < g.s + latency + 1)
+        // With formants raised (fr > 1) a grain reads further ahead of its mark:
+        // keep every source sample inside what has already arrived.
+        const float scaledPeriod = (voiced ? period : 0.0f) * grainScale;
+        const auto ahead = static_cast<int64_t> (std::ceil (std::max (0.0f, scaledPeriod - scaledPeriod / formantFactor)));
+        if (voiced && findEpoch (g.s, g.s + latency - ahead, e, p))
         {
-            const int half = std::max (2, static_cast<int> (std::lround (p)));
+            // The grain spans ±(grainScale · period) of the source; resampled by fr it
+            // spans ±(grainScale · period / fr) of the output.
+            g.fr = formantFactor;
+            g.resampled = std::abs (formantFactor - 1.0f) > 1.0e-6f;
+            const int half = std::max (2, static_cast<int> (std::lround (p * grainScale / formantFactor)));
             g.e = e;
             g.left = std::min (half, leftAvail);
             g.right = half;
@@ -261,10 +279,24 @@ void PsolaShifter::process (float* const* io, int numChannels, const float* mono
             for (int k = 0; k < numGrains; ++k)
             {
                 const float weight = w[static_cast<size_t> (k)];
-                if (weight > 0.0f)
+                if (weight <= 0.0f)
+                    continue;
+
+                const auto& g = grains[static_cast<size_t> (k)];
+                if (! g.resampled)
                 {
-                    const auto& g = grains[static_cast<size_t> (k)];
                     acc += weight * r[static_cast<size_t> ((x - g.s + g.e) & mask)];
+                }
+                else
+                {
+                    // Resampled grain (formant shift): linear interpolation.
+                    const double pos = static_cast<double> (g.e) + static_cast<double> (x - g.s) * g.fr;
+                    const double fl = std::floor (pos);
+                    const auto i0 = static_cast<int64_t> (fl);
+                    const auto frac = static_cast<float> (pos - fl);
+                    const float a = r[static_cast<size_t> (i0 & mask)];
+                    const float b = r[static_cast<size_t> ((i0 + 1) & mask)];
+                    acc += weight * (a + frac * (b - a));
                 }
             }
             const float wet = acc * norm;

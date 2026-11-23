@@ -34,6 +34,10 @@ inline constexpr const char* tolerance = "tolerance";
 inline constexpr const char* naturalHold = "naturalHold";
 inline constexpr const char* transpose = "transpose";
 inline constexpr const char* mix = "mix";
+inline constexpr const char* formantPreserve = "formantPreserve"; // phase 4
+inline constexpr const char* formantShift = "formantShift";
+inline constexpr const char* formantLink = "formantLink";
+inline constexpr const char* character = "character";
 
 /** "noteState0" (C) .. "noteState11" (B). */
 juce::String noteState (int pitchClass);
@@ -44,8 +48,8 @@ enum class QualityMode : int
 {
     Live = 0,     ///< PSOLA, ~3 ms latency
     Tracking = 1, ///< PSOLA, ~10 ms latency (default)
-    HQ = 2,       ///< phase 4 (signalsmith-stretch); uses Tracking until then
-    Vintage = 3   ///< phase 4 character mode; Live engine + hard settings until then
+    HQ = 2,       ///< signalsmith-stretch phase vocoder, ~60 ms latency
+    Vintage = 3   ///< classic hard tune: dry PSOLA grains, formants follow pitch, instant steps
 };
 
 inline constexpr int kNumQualityModes = 4;

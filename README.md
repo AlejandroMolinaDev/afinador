@@ -4,9 +4,9 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-![NovaPitch — Fase 3](docs/img/fase3-editor.png)
+![NovaPitch — Fase 4](docs/img/fase4-editor.png)
 
-**Estado:** Fase 3 — corrección automática en tiempo real: tonalidad y 14 escalas, velocidad (0 ms = hard tune), tolerancia, sostenido natural, transposición ±12, mezcla, modos Live (3 ms) y Tracking (10 ms). HQ, Vintage y formantes llegan en la Fase 4. Ver `docs/ROADMAP.md`.
+**Estado:** Fase 4 — corrección automática en tiempo real (tonalidad y 14 escalas, velocidad 0–400 ms, tolerancia, sostenido natural, transposición ±12, mezcla) con 4 modos: Live (3 ms), Tracking (10 ms), HQ (100 ms, motor de alta calidad) y Vintage (hard tune clásico); formantes preservados o desplazados ±12 st y control de carácter. Siguiente: vibrato (Fase 5). Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|
@@ -108,6 +108,7 @@ Los binarios quedan como artefactos descargables de cada ejecución (pestaña *A
 - **JUCE 8**: licencia comercial (plan *Starter* gratuito hasta el límite de ingresos de JUCE) **o** AGPLv3. Para distribuir NovaPitch como software cerrado necesitas una licencia JUCE adecuada a tus ingresos.
 - **VST3 SDK** (incluido en JUCE): MIT desde la versión 3.8.
 - **CLAP** y **clap-juce-extensions**: MIT.
+- **signalsmith-stretch** y **signalsmith-linear** (motor HQ): MIT.
 - **Catch2**: Boost Software License 1.0 (solo tests).
 
 Detalle en [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).

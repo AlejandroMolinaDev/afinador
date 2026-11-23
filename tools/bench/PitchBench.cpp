@@ -59,23 +59,32 @@ int main()
         std::printf ("\n");
     }
 
-    std::printf ("\nNovaPitchProcessor::processBlock (stereo, default profile)\n");
-    for (const double sr : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    std::printf ("\nNovaPitchProcessor::processBlock (stereo, default profile, %d-sample blocks)\n", block);
+    std::printf ("%-10s %10s %10s %10s %10s\n", "mode", "44.1k", "48k", "96k", "192k");
+    const char* modeNames[] = { "Live", "Tracking", "HQ", "Vintage" };
+    for (int mode = 0; mode < 4; ++mode)
     {
-        NovaPitchProcessor proc;
-        proc.prepareToPlay (sr, block);
-        const auto sig = benchSignal (sr, seconds);
-        juce::AudioBuffer<float> buffer (2, block);
-        juce::MidiBuffer midi;
-        const double pct = percentOfCore (seconds, [&] {
-            for (size_t pos = 0; pos + block <= sig.size(); pos += block)
-            {
-                buffer.copyFrom (0, 0, sig.data() + pos, block);
-                buffer.copyFrom (1, 0, sig.data() + pos, block);
-                proc.processBlock (buffer, midi);
-            }
-        });
-        std::printf ("  %6.1f kHz: %6.2f%% of one core\n", sr / 1000.0, pct);
+        std::printf ("%-10s", modeNames[mode]);
+        for (const double sr : { 44100.0, 48000.0, 96000.0, 192000.0 })
+        {
+            NovaPitchProcessor proc;
+            if (auto* param = proc.getValueTreeState().getParameter (ParamIDs::qualityMode))
+                param->setValueNotifyingHost (param->convertTo0to1 (static_cast<float> (mode)));
+            proc.prepareToPlay (sr, block);
+            const auto sig = benchSignal (sr, seconds);
+            juce::AudioBuffer<float> buffer (2, block);
+            juce::MidiBuffer midi;
+            const double pct = percentOfCore (seconds, [&] {
+                for (size_t pos = 0; pos + block <= sig.size(); pos += block)
+                {
+                    buffer.copyFrom (0, 0, sig.data() + pos, block);
+                    buffer.copyFrom (1, 0, sig.data() + pos, block);
+                    proc.processBlock (buffer, midi);
+                }
+            });
+            std::printf (" %9.2f%%", pct);
+        }
+        std::printf ("\n");
     }
     return 0;
 }

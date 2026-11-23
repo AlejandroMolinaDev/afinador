@@ -86,5 +86,21 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 41 | Automatizar Velocidad/Tonalidad/Escala desde FL: los cambios se oyen sin clics | | |
 | 42 | CPU (*Performance monitor*) a 48 kHz / buffer 128 en modo Live y Tracking: anotar % | | |
 
+## Fase 4 — Formantes, HQ y Vintage
+
+> Automático en CI: formantes preservados/desplazados/carácter (PSOLA y HQ, centroide espectral), +35 ¢ corregidos en HQ, transposición ±12 en HQ (< 5 ¢), latencia de los 4 modos en el binario (HQ = 100 ms), 0 asignaciones de memoria en el hilo de audio en los 4 modos, demo de audio con renders HQ/formantes/Vintage.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 43 | **Modo HQ** en una pista ya grabada: FL compensa los 100 ms (la voz sigue alineada con el beat) | | |
+| 44 | HQ vs Tracking con Transposición ±7: HQ suena más limpio en voces con aire / ruido | | |
+| 45 | Exportar el proyecto con HQ: el resultado coincide con la reproducción | | |
+| 46 | **Preservar formantes** on/off con Transposición +7: on = voz natural, off = voz de "ardilla" | | |
+| 47 | **Desplazar formantes** ±4 st sin transposición: cambia el timbre, no la afinación | | |
+| 48 | **Carácter** ±30 %: voz más "pequeña" / más "grande" | | |
+| 49 | **Enlazar a transposición**: con Transposición −12, voz de "monstruo" | | |
+| 50 | **Vintage**: efecto hard tune clásico, más seco que Live con velocidad 0 | | |
+| 51 | CPU en HQ a 48 kHz (*Performance monitor*): anotar % (Mac Apple Silicon debería ser menor) | | |
+
 ## Notas / incidencias encontradas
 - 

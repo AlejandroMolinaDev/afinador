@@ -7,6 +7,8 @@
 | [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) | `main` @ 3837f4a | CLAP format | MIT |
 | [CLAP](https://github.com/free-audio/clap) | 1.2.10 | CLAP API headers | MIT |
 | [clap-helpers](https://github.com/free-audio/clap-helpers) | as pinned by clap-juce-extensions | CLAP helpers | MIT |
+| [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | 1.4.0 | HQ pitch engine | MIT |
+| [signalsmith-linear](https://github.com/Signalsmith-Audio/linear) | 0.6.4 | FFT/STFT used by signalsmith-stretch | MIT |
 | [Catch2](https://github.com/catchorg/Catch2) | v3.16.1 | Unit tests only (not shipped) | BSL-1.0 |
 
 ## CI-only tools (not shipped)
@@ -18,6 +20,5 @@
 ## Planned (added in later phases)
 | Dependency | Phase | License |
 |---|---|---|
-| [signalsmith-stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) | 4 | MIT |
 | Celemony ARA SDK 2.3.0 | 9 | Apache 2.0 |
 | AAX SDK | 9/10 (optional) | Avid license agreement |

@@ -39,6 +39,9 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getPopupMenuFont() override;
 
+    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool shouldDrawButtonAsHighlighted,
+                           bool shouldDrawButtonAsDown) override;
+
 private:
     juce::Colour accent { Palette::defaultAccent };
 };

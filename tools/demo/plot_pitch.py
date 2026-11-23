@@ -40,11 +40,12 @@ def yin_track(x, sr, fmin=80, fmax=900, hop=240, W=1200, thr=0.12):
 
 files = [("1_original_desafinado.wav", "Original (desafinada)"),
          ("2_natural.wav", "NovaPitch · corrección natural (60 ms, sostenido 50 %)"),
+         ("6_hq_natural.wav", "NovaPitch HQ · corrección natural (60 ms, sostenido 50 %)"),
          ("3_hard_tune.wav", "NovaPitch · hard tune (velocidad 0 ms)")]
 
 SURFACE, INK, INK2, MUTED, GRID, SERIES = "#fcfcfb", "#0b0b0b", "#52514e", "#8a8984", "#e6e5e0", "#2a78d6"
 plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
-fig, axes = plt.subplots(len(files), 1, figsize=(9, 7.2), sharex=True, facecolor=SURFACE)
+fig, axes = plt.subplots(len(files), 1, figsize=(9, 9.4), sharex=True, facecolor=SURFACE)
 names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 a_minor = {0, 2, 4, 5, 7, 9, 11}
 summary = []

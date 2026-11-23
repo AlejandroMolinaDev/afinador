@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "dsp/CorrectionCurve.h"
+#include "dsp/HqShifter.h"
 #include "dsp/NoteMapper.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/PsolaShifter.h"
@@ -57,6 +58,7 @@ public:
     static constexpr int kControlBlock = 32;
     static constexpr double kLiveLatencySeconds = 0.003;
     static constexpr double kTrackingLatencySeconds = 0.010;
+    static constexpr float kVintageGrainScale = 0.7f;
 
     NovaPitchProcessor();
     ~NovaPitchProcessor() override;
@@ -99,8 +101,9 @@ public:
     /** Human readable plugin format (VST3 / AU / CLAP / Standalone ...). */
     juce::String getFormatName() const;
 
-    /** Latency of a processing mode at a sample rate, in samples. */
-    static int latencyForMode (QualityMode mode, double sampleRate) noexcept;
+    /** Latency of a processing mode at a sample rate, in samples.
+        (HQ configures a temporary engine: not for the audio thread.) */
+    static int latencyForMode (QualityMode mode, double sampleRate);
 
     HostDiagnostics& getDiagnostics() noexcept { return diagnostics; }
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
@@ -123,6 +126,10 @@ private:
         std::atomic<float>* transpose = nullptr;
         std::atomic<float>* mix = nullptr;
         std::array<std::atomic<float>*, 12> noteStates {};
+        std::atomic<float>* formantPreserve = nullptr;
+        std::atomic<float>* formantShift = nullptr;
+        std::atomic<float>* formantLink = nullptr;
+        std::atomic<float>* character = nullptr;
     };
 
     /** Reads all parameters and pushes them into the DSP objects (audio thread). */
@@ -144,7 +151,10 @@ private:
     dsp::PitchDetector pitchDetector;
     dsp::NoteMapper noteMapper;
     dsp::CorrectionCurve correctionCurve;
-    dsp::PsolaShifter shifter;
+    dsp::PsolaShifter shifter;   // Live, Tracking, Vintage
+    dsp::HqShifter hqShifter;    // HQ
+    bool hqActive = false;
+    std::array<int, kNumQualityModes> modeLatency {};
 
     std::vector<float> monoScratch;
     PitchFrameFifo pitchFifo;
@@ -154,6 +164,9 @@ private:
     float a4Hz = 440.0f;
     float transposeSemitones = 0.0f;
     QualityMode blockMode = kDefaultQualityMode;
+    bool formantPreserve = true;
+    bool formantLink = false;
+    float formantStaticFactor = 1.0f; // shift x character (x link part)
 
     std::atomic<int> desiredLatency { 0 };
 

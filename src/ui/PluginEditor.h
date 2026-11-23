@@ -32,7 +32,7 @@ public:
     void resized() override;
 
     static constexpr int kBaseWidth = 760;
-    static constexpr int kBaseHeight = 604;
+    static constexpr int kBaseHeight = 734;
 
 private:
     class Content final : public juce::Component
@@ -59,6 +59,8 @@ private:
 
     std::vector<std::unique_ptr<LabeledCombo>> combos; // key, scale, mode, profile
     std::vector<std::unique_ptr<LabeledKnob>> knobs;   // speed, tolerance, hold, transpose, mix, sensitivity, A4
+    std::vector<std::unique_ptr<LabeledToggle>> formantToggles; // preserve, link
+    std::vector<std::unique_ptr<LabeledKnob>> formantKnobs;     // shift, character
 
     juce::String hostDescription;
     bool hostIsFlStudio = false;

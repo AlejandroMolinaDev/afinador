@@ -47,6 +47,15 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/JUCE/CMakeLists.txt")
 endif()
 
 add_subdirectory(libs/JUCE)
+
+# signalsmith-stretch (HQ engine). Its CMake would FetchContent signalsmith-linear
+# at configure time; we provide it from a pinned submodule instead (offline,
+# reproducible builds).
+add_subdirectory(libs/signalsmith-linear EXCLUDE_FROM_ALL)
+add_subdirectory(libs/signalsmith-stretch EXCLUDE_FROM_ALL)
+# Third-party headers: don't apply our warning flags to them.
+set_target_properties(signalsmith-linear signalsmith-stretch PROPERTIES SYSTEM ON)
+
 if(NOVAPITCH_ENABLE_CLAP)
     add_subdirectory(libs/clap-juce-extensions EXCLUDE_FROM_ALL)
 endif()
@@ -106,9 +115,11 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/CorrectionCurve.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PsolaShifter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PsolaShifter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HqShifter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HqShifter.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp)
+target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp signalsmith-stretch)
 
 # All plugin code lives in an INTERFACE library so the unit tests compile exactly
 # the same sources as the plugin (without the plugin-format wrappers).

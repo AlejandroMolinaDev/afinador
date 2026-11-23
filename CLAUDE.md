@@ -1,7 +1,7 @@
 # CLAUDE.md — NovaPitch
 
 Real-time monophonic pitch correction plugin (vocal tuner) in C++20 / JUCE 8.
-Full spec: the original prompt document (phases 1–10). Current status: **Phase 3 done (automatic correction: NoteMapper + CorrectionCurve + PSOLA, Live/Tracking latency)**.
+Full spec: the original prompt document (phases 1–10). Current status: **Phase 4 done (formants, HQ engine via signalsmith-stretch, Vintage)**. Next: phase 5 (vibrato).
 Roadmap and pending items: `docs/ROADMAP.md`.
 
 ## Priority: FL Studio on Windows AND macOS
@@ -61,12 +61,12 @@ Validators (downloaded to `tools/bin/`, git-ignored): pluginval v1.0.4 `--strict
 CMake options: `NOVAPITCH_BUILD_TESTS` (ON), `NOVAPITCH_BUILD_TOOLS` (ON), `NOVAPITCH_COPY_AFTER_BUILD` (OFF), `NOVAPITCH_ENABLE_CLAP` (ON), `NOVAPITCH_ENABLE_AAX` (OFF).
 
 ## Architecture
-- `libs/` — git submodules pinned by commit: JUCE 8.0.15, clap-juce-extensions (main @ CLAP 1.2.10), Catch2 v3.16.1.
+- `libs/` — git submodules pinned by commit: JUCE 8.0.15, clap-juce-extensions (main @ CLAP 1.2.10), signalsmith-stretch 1.4.0 + signalsmith-linear 0.6.4 (linear provided as a submodule so stretch's FetchContent is skipped; both marked SYSTEM), Catch2 v3.16.1.
 - CMake INTERFACE libs: `NovaPitchDsp` (src/dsp + juce_dsp) ⊂ `NovaPitchCore` (all plugin sources). Linked by the plugin target `NovaPitch`, `NovaPitchTests` and the tools, so everything compiles exactly the plugin code.
-- `src/dsp/` — pure DSP, no GUI: `NoteMapper` + `Scales` (key/scale/note states → target, hysteresis), `CorrectionCurve` (speed/tolerance/natural hold, in cents), `PsolaShifter` (streaming TD-PSOLA, fixed latency, identity on unvoiced), `PitchDetector` (YIN-FFT + MPM validator, voicing, octave hysteresis, median; see `docs/DSP_NOTES.md`), `InputProfile` (f0 ranges, enum values stored in state: append only), `PitchUtils` (Hz/MIDI/cents/note names), `Biquad`.
+- `src/dsp/` — pure DSP, no GUI: `NoteMapper` + `Scales` (key/scale/note states → target, hysteresis), `CorrectionCurve` (speed/tolerance/natural hold, in cents), `PsolaShifter` (streaming TD-PSOLA, fixed latency, identity on unvoiced, grain resampling for formants, grain scale for Vintage), `HqShifter` (signalsmith-stretch wrapper, 100 ms, formant base in f0/fs units, dry delay line), `PitchDetector` (YIN-FFT + MPM validator, voicing, octave hysteresis, median; see `docs/DSP_NOTES.md`), `InputProfile` (f0 ranges, enum values stored in state: append only), `PitchUtils` (Hz/MIDI/cents/note names), `Biquad`.
 - `src/plugin/` — `NovaPitchProcessor` (AudioProcessor + `clap_properties` with CLAP; runs the chain in 32-sample sub-blocks: mono sum → PitchDetector → (frame callback) NoteMapper → CorrectionCurve → PsolaShifter control; latency per mode, reported to the host from a message-thread timer when the mode changes; bypass keeps the latency-compensated dry path), `Parameters` (APVTS layout, IDs, state version), `PitchFrameFifo` (lock-free SPSC audio→UI).
-- `src/ui/` — `PluginEditor` (fixed 760×604 `Content` scaled by AffineTransform: 75–200 %, crisp on HiDPI; 30 Hz timer drains the FIFO), `components/TuningMeter` (detected note, cents, target + correction), `components/PitchTrace` (5 s piano-roll: input vs corrected), `components/LabeledControls` (knob/combo bound to APVTS), `NovaLookAndFeel` (original palette, configurable accent, custom knob/combo).
-- `tests/unit/` — Catch2 tests; `tests/signals/SignalGenerators.h` — deterministic synthetic signals (sine, band-limited saw, weak fundamental, vibrato, glissando, noise).
+- `src/ui/` — `PluginEditor` (fixed 760×734 `Content` scaled by AffineTransform: 75–200 %, crisp on HiDPI; 30 Hz timer drains the FIFO), `components/TuningMeter` (detected note, cents, target + correction), `components/PitchTrace` (5 s piano-roll: input vs corrected), `components/LabeledControls` (knob/combo/toggle bound to APVTS), `NovaLookAndFeel` (original palette, configurable accent, custom knob/combo).
+- `tests/unit/` — Catch2 tests (incl. `RealtimeSafetyTests`: replaces global operator new and asserts 0 allocations in processBlock for every mode); `tests/signals/SignalGenerators.h` — deterministic synthetic signals (sine, band-limited saw, weak fundamental, vibrato, glissando, noise).
 - `tools/` — `hosttest` (FL-like host scenarios on the binary), `bench` (CPU), `snapshot` (UI PNGs), `render` (offline WAV render with any parameters, latency removed), `demo/` (Python: synthetic out-of-tune phrase → renders → pitch plot).
 - `.github/workflows/build.yml` — Windows x64, macOS Universal, Linux x64: build, unit tests, host test, CPU bench (run summary), UI snapshots (artefact), pluginval 10, auval, clap-validator, plugin artefacts.
 
@@ -93,3 +93,6 @@ CMake options: `NOVAPITCH_BUILD_TESTS` (ON), `NOVAPITCH_BUILD_TOOLS` (ON), `NOVA
 - Phase 3: fixed latency per mode (Live 3 ms, Tracking 10 ms) rather than per profile, so FL's PDC only changes when the user changes the mode. Default mode: Tracking.
 - Phase 3: choice parameters parse text robustly (exact, case-insensitive, UTF-8 mis-decoded as Latin-1 by the CLAP wrapper, numeric index) — fixes clap-validator's text round-trip on accented names.
 - Phase 3: input samples are sanitised (NaN/Inf → 0) before the chain, output sanitised too.
+- Phase 4: parameters appended: formantPreserve, formantShift, formantLink, character. MSVC gets `/bigobj` (signalsmith templates).
+- Phase 4: HQ = signalsmith-stretch with a 90 ms block / 10 ms interval (100 ms latency): 45 ms biased the shifted pitch by up to +4 c; 90 ms brings it to ~+1.5 c within the spec's 50–120 ms. Per-mode latency is cached in `prepareToPlay` (HQ latency requires configuring an engine → never on the audio thread).
+- Phase 4: Vintage = PSOLA with formants following pitch, grain scale 0.7, speed 0, no tolerance/hold.
