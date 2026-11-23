@@ -78,7 +78,7 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] Captura del audio (no solo de la afinación) para dibujar la forma de onda y como base de la corrección temporal (Fase 9).
 - [ ] Rejilla en compases/tiempos (BPM del host) y ajuste a la rejilla; hoy la regla es en segundos.
 - [ ] Copiar/pegar objetos, mover con flechas, cuantizar notas al inicio/fin de la nota detectada.
-- [ ] Dibujar la curva de salida prevista (captura + corrección) sobre la curva capturada.
+- [x] Curva corregida prevista (captura + objetos + velocidad + vibrato) dibujada sobre la curva original.
 - [ ] Atajos de teclado en FL: FL puede quedarse con algunas teclas si la ventana del plugin no tiene el foco; los botones de la barra cubren todas las acciones.
 - [ ] Comprimir la curva capturada en el estado (hoy ~1,3 MB por cada 10 min de captura en el .flp).
 

@@ -45,6 +45,8 @@ public:
 private:
     void updateButtons();
     void updateInspector();
+    /** Predicted output pitch per captured frame (-1 = not corrected / unvoiced). */
+    void updatePrediction();
     void applyInspector (const juce::Identifier& property, double value);
     void mergeSelection();
     void showClearMenu();
@@ -64,6 +66,8 @@ private:
     bool updatingInspector = false;
 
     int shownGeneration = -1;
+    std::vector<float> predicted;
+    float predictedRetune = -1.0f, predictedKeep = -1.0f;
     juce::String infoText;
 
     friend class Roll;

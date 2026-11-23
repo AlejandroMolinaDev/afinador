@@ -355,6 +355,13 @@ detected pitch while the host plays and indexes it by the host timeline.
   latency). MIDI Target and the NoteMapper are not used in graphical mode.
 - The vibrato split, formants, transposition, harmonies and engines (PSOLA/HQ) work as in automatic mode.
 
+### Editor preview ("curva corregida")
+- The editor draws, over the captured (original) curve, the predicted output where objects act: centre =
+  running median (±90 ms, removes a vibrato cycle but keeps note steps sharp), correction = one-pole towards
+  the object pitch with the note's (or global) speed, plus the oscillation around the centre × vibrato kept
+  (clamped to ±0.8 st). Lines and curves are drawn exactly. It is a preview: the audio path uses the
+  VibratoAnalyzer and the real-time CorrectionCurve.
+
 ### Measured
 - End to end (unit test with a simulated play head): A3 +30 c captured → import gives one A3 note → edited
   to B3 and shortened to 0.8 s → playback: < 5 c from B3 inside the note, < 5 c from the input after it;

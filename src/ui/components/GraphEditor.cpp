@@ -343,6 +343,31 @@ public:
             g.strokePath (p, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         };
         drawCurve (captured, Palette::textPrimary.withAlpha (0.55f));
+
+        // Predicted corrected curve (where objects act)
+        if (owner.predicted.size() == captured.size())
+        {
+            juce::Path p;
+            bool open = false;
+            const auto begin = visibleBegin (captured);
+            for (auto it = begin; it != captured.end() && it->time <= viewStart + viewLength + 0.05; ++it)
+            {
+                const float out = owner.predicted[static_cast<size_t> (it - captured.begin())];
+                if (out < 0.0f)
+                {
+                    open = false;
+                    continue;
+                }
+                const float x = xOf (it->time), y = yOf (out);
+                if (open)
+                    p.lineTo (x, y);
+                else
+                    p.startNewSubPath (x, y);
+                open = true;
+            }
+            g.setColour (accent.brighter (0.35f));
+            g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
         drawCurve (pending, kCaptureRed.withAlpha (0.85f));
 
         // Objects
@@ -1061,10 +1086,83 @@ juce::String GraphEditor::buildInfoText() const
     return text;
 }
 
+void GraphEditor::updatePrediction()
+{
+    auto& state = processor.getValueTreeState();
+    const bool vintage = juce::roundToInt (state.getRawParameterValue ("qualityMode")->load()) == 3;
+    predictedRetune = vintage ? 0.0f : state.getRawParameterValue ("retuneSpeed")->load();
+    predictedKeep = vintage ? 0.0f : state.getRawParameterValue ("vibratoPreserve")->load() / 100.0f;
+
+    // Same idea as the audio path: correction acts on a vibrato-free centre
+    // (here a centred +-90 ms median: removes a vibrato cycle, keeps note steps
+    // sharp), smoothed by the retune speed; the oscillation around the centre
+    // is put back scaled by "keep".
+    const auto& frames = model.getCaptured();
+    const size_t n = frames.size();
+    predicted.assign (n, -1.0f);
+    const auto track = model.compile();
+    std::vector<float> centre (n, -1.0f), window;
+    for (size_t i = 0, lo = 0, hi = 0; i < n; ++i)
+    {
+        if (frames[i].midi < 0.0f)
+            continue;
+        while (frames[lo].time < frames[i].time - 0.09)
+            ++lo;
+        hi = std::max (hi, i);
+        while (hi + 1 < n && frames[hi + 1].time <= frames[i].time + 0.09)
+            ++hi;
+        window.clear();
+        for (size_t k = lo; k <= hi; ++k)
+            if (frames[k].midi >= 0.0f)
+                window.push_back (frames[k].midi);
+        const auto mid = window.begin() + static_cast<long> (window.size() / 2);
+        std::nth_element (window.begin(), mid, window.end());
+        centre[i] = *mid;
+    }
+
+    float correction = 0.0f;
+    double lastTime = -1.0e9;
+    bool active = false;
+    for (size_t i = 0; i < n; ++i)
+    {
+        const auto& f = frames[i];
+        dsp::CorrectionTrack::Result r;
+        if (f.midi < 0.0f || ! track->lookup (f.time, r))
+        {
+            active = false;
+            continue;
+        }
+        const bool exact = r.kind != dsp::CorrectionTrack::Kind::Note;
+        const float tau = exact ? 0.0f : (r.retuneMs >= 0.0f ? r.retuneMs : predictedRetune);
+        const float keep = exact ? 0.0f : (r.vibratoKeep >= 0.0f ? r.vibratoKeep : predictedKeep);
+        const float error = r.pitch - centre[i];
+        const double dt = active ? std::max (0.0, f.time - lastTime) : 0.0;
+        if (! active || tau < 0.5f)
+            correction = error;
+        else
+            correction += static_cast<float> (1.0 - std::exp (-dt * 1000.0 / tau)) * (error - correction);
+        // The +-0.8 st clamp keeps note transitions (where the centre lags) from drawing spikes.
+        predicted[i] = centre[i] + correction + keep * std::clamp (f.midi - centre[i], -0.8f, 0.8f);
+        active = true;
+        lastTime = f.time;
+    }
+}
+
 void GraphEditor::refresh()
 {
     const int generation = model.getGeneration();
-    const bool changed = generation != shownGeneration;
+    bool changed = generation != shownGeneration;
+    {
+        auto& state = processor.getValueTreeState();
+        const bool vintage = juce::roundToInt (state.getRawParameterValue ("qualityMode")->load()) == 3;
+        const float retune = vintage ? 0.0f : state.getRawParameterValue ("retuneSpeed")->load();
+        const float keep = vintage ? 0.0f : state.getRawParameterValue ("vibratoPreserve")->load() / 100.0f;
+        if (changed || std::abs (retune - predictedRetune) > 1.0e-3f || std::abs (keep - predictedKeep) > 1.0e-4f)
+        {
+            updatePrediction();
+            changed = true;
+        }
+    }
     if (changed)
     {
         const bool hadData = shownGeneration >= 0;
