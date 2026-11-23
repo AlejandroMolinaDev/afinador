@@ -4,6 +4,8 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
+![NovaPitch — Fase 2](docs/img/fase2-editor.png)
+
 **Estado:** Fase 2 — detección de afinación en tiempo real con medidor y gráfico (el audio todavía pasa sin cambios; la corrección llega en la Fase 3). Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
