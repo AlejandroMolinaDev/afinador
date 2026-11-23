@@ -8,12 +8,13 @@
 namespace novapitch
 {
 
-/** Song settings shared between instances ("Sincronizar"). */
+/** Song settings shared between instances ("Sincronizar"): key, scale, note states and detunes, A4. */
 struct SongSettings
 {
     int key = 0;
     int scale = 0;
     std::array<int, 12> noteStates {};
+    std::array<float, 12> noteDetuneCents {};
     float referenceA4 = 440.0f;
 };
 

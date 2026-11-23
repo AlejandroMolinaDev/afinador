@@ -48,7 +48,7 @@ constexpr AccentOption kAccents[] = {
 
 // Layout (base coordinates)
 const juce::Rectangle<int> kModeSwitch    { 200, 26, 124, 28 };
-const juce::Rectangle<int> kPresetBar     { 334, 26, 306, 28 };
+const juce::Rectangle<int> kPresetBar     { 334, 26, 406, 28 }; // host name: in the footer
 const juce::Rectangle<int> kGraphBounds   { 20, 70, 720, 540 };
 const juce::Rectangle<int> kMeterBounds   { 20, 76, 470, 222 };
 const juce::Rectangle<int> kSidePanel     { 506, 76, 234, 222 };
@@ -248,13 +248,34 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
 
     // Preset bar ------------------------------------------------------------------
     presetBox.setTooltip (u8 ("Presets de fábrica y de usuario. Cambian el sonido, nunca la tonalidad, "
-                              "la escala, las notas ni la referencia A4."));
+                              "la escala, las notas ni la referencia A4. «*» = ajustes cambiados desde que se cargó o "
+                              "guardó; elegir el mismo preset otra vez descarta los cambios."));
     presetBox.onChange = [this] {
-        const auto name = presetBox.getText();
-        if (name.isNotEmpty() && name != processor.getPresetManager().getCurrentPresetName())
+        // Only user selections notify: choosing the current preset again reverts its changes.
+        if (const auto name = presetBox.getText(); name.isNotEmpty() && ! name.endsWith (" *"))
             processor.getPresetManager().loadPreset (name);
         shownPresetName = {};
     };
+
+    // A/B comparison
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& b = abButtons[static_cast<size_t> (i)];
+        b.setButtonText (i == 0 ? "A" : "B");
+        b.setTooltip (u8 ("Comparación A/B: guarda dos versiones del sonido y alterna entre ellas (la tonalidad, la escala "
+                          "y las notas no cambian). En ··· puedes copiar una en la otra. Se guarda con el proyecto."));
+        b.setRadioGroupId (1004);
+        b.setClickingTogglesState (true);
+        b.setColour (juce::TextButton::buttonColourId, Palette::panelRaised);
+        b.setColour (juce::TextButton::textColourOffId, Palette::textMuted);
+        b.setColour (juce::TextButton::textColourOnId, Palette::background);
+        b.onClick = [this, i] {
+            if (abButtons[static_cast<size_t> (i)].getToggleState())
+                processor.getPresetManager().selectSlot (i);
+        };
+        content.addAndMakeVisible (b);
+    }
+    abButtons[static_cast<size_t> (processor.getPresetManager().getActiveSlot())].setToggleState (true, juce::dontSendNotification);
     prevPreset.setTooltip (u8 ("Preset anterior"));
     nextPreset.setTooltip (u8 ("Preset siguiente"));
     prevPreset.onClick = [this] { processor.getPresetManager().loadNext (-1); };
@@ -369,7 +390,9 @@ void PluginEditor::refreshPresetBox()
 
     shownPresetName = pm.getCurrentPresetName();
     const int index = pm.getCurrentIndex();
-    if (index >= 0)
+    if (shownModified)
+        presetBox.setText (shownPresetName + " *", juce::dontSendNotification); // edited since loaded / saved
+    else if (index >= 0)
         presetBox.setSelectedId (index + 1, juce::dontSendNotification);
     else
         presetBox.setText (shownPresetName, juce::dontSendNotification);
@@ -428,6 +451,7 @@ void PluginEditor::showOptionsMenu()
     menu.addItem (2, u8 ("Borrar preset de usuario «") + current + u8 ("»"), currentIsUser);
     menu.addItem (4, u8 ("Abrir carpeta de capturas de audio (modo gráfico)"));
     menu.addSeparator();
+    menu.addItem (5, pm.getActiveSlot() == 0 ? u8 ("Copiar el sonido A en B") : u8 ("Copiar el sonido B en A"));
     menu.addItem (3, u8 ("Quitar todas las asignaciones MIDI"));
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&optionsButton),
@@ -444,6 +468,8 @@ void PluginEditor::showOptionsMenu()
                                 refreshPresetBox();
                             else if (result == 3)
                                 processor.getMidiLearn().clearAll();
+                            else if (result == 5)
+                                presets.copyActiveToOther();
                             else if (result == 4)
                             {
                                 processor.getCaptureRoot().createDirectory();
@@ -719,8 +745,20 @@ void PluginEditor::timerCallback()
     }
 
     // Presets / MIDI learn state changed (host automation, preset buttons, CC learnt...)
-    if (processor.getPresetManager().getCurrentPresetName() != shownPresetName)
+    auto& pm = processor.getPresetManager();
+    if (pm.getCurrentPresetName() != shownPresetName)
         refreshPresetBox();
+    if (const int slot = pm.getActiveSlot(); ! abButtons[static_cast<size_t> (slot)].getToggleState())
+        abButtons[static_cast<size_t> (slot)].setToggleState (true, juce::dontSendNotification);
+    if (++modifiedCheckCounter >= 6) // 5 Hz is plenty for the "*"
+    {
+        modifiedCheckCounter = 0;
+        if (const bool modified = pm.isModified(); modified != shownModified)
+        {
+            shownModified = modified;
+            refreshPresetBox();
+        }
+    }
     if (processor.getMidiMappingGeneration() != shownMidiGeneration
         || processor.getMidiLearn().getLearningParam() != shownLearning)
         refreshMidiLabels();
@@ -770,6 +808,9 @@ void PluginEditor::Content::resized()
     owner.optionsButton.setBounds (presets.removeFromRight (34));
     presets.removeFromRight (4);
     owner.savePreset.setBounds (presets.removeFromRight (70));
+    presets.removeFromRight (4);
+    owner.abButtons[1].setBounds (presets.removeFromRight (24));
+    owner.abButtons[0].setBounds (presets.removeFromRight (24));
     presets.removeFromRight (4);
     owner.nextPreset.setBounds (presets.removeFromRight (26));
     presets.removeFromRight (4);
@@ -887,17 +928,7 @@ void PluginEditor::Content::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (28.0f, juce::Font::bold));
     g.drawText ("NovaPitch", header.withTrimmedLeft (30.0f), juce::Justification::centredLeft);
 
-    // Host badge (FL Studio first)
-    const auto badgeColour = owner.hostIsFlStudio ? Palette::ok : Palette::textMuted;
-    const auto badgeText = owner.hostIsFlStudio ? u8 ("FL Studio") : owner.hostDescription.substring (0, 14);
-    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    const float badgeWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), badgeText) + 24.0f;
-    const auto badge = juce::Rectangle<float> (badgeWidth, 24.0f).withPosition (header.getRight() - badgeWidth, header.getCentreY() - 12.0f);
-    g.setColour (badgeColour.withAlpha (0.15f));
-    g.fillRoundedRectangle (badge, 12.0f);
-    g.setColour (badgeColour);
-    g.drawRoundedRectangle (badge, 12.0f, 1.0f);
-    g.drawText (badgeText, badge, juce::Justification::centred);
+    // The host (FL Studio first) is shown in the footer: the header holds the presets and A/B.
 
 
     if (owner.graphView)

@@ -20,6 +20,7 @@ Estado: ✅ ya estaba · 🔧 corregido o añadido en esta auditoría · ⏳ pen
 | Tipos de entrada (soprano, tenor, grave, instrumento, bajo) | ✅ | Perfil de entrada |
 | Sensibilidad de detección | ✅ | Sensibilidad |
 | Referencia de afinación (detune) | ✅ | Referencia A4 400–480 Hz |
+| **Desafinación por nota (escalas microtonales, entonación justa, cuartos de tono)** | 🔧 | ±50 ¢ por nota en la pestaña Notas; decide y corrige hacia la nota desafinada; llega a las armonías, al objetivo MIDI, a la importación del modo gráfico y a Sincronizar |
 | Transposición | ✅ | ±12 st |
 | Formantes: preservar, desplazar, longitud del tracto | ✅ | Pestaña Formantes (Carácter = longitud del tracto) |
 | Modo clásico de corrección dura | ✅ | Modo Vintage |
@@ -67,12 +68,19 @@ Estado: ✅ ya estaba · 🔧 corregido o añadido en esta auditoría · ⏳ pen
 | Formante, panorama, nivel, humanizar, mute/solo por voz | ✅ | |
 | Bus con EQ, envolvente, gate y ancho | ✅ | Pestaña Bus |
 
+## Presets
+
+| Función | Estado | En NovaPitch |
+|---|---|---|
+| Presets de fábrica y de usuario | ✅ | Barra de presets |
+| **Comparación A/B** de dos sonidos | 🔧 | Botones A y B en la cabecera; copiar uno en otro en `···`; se guarda con el proyecto; nunca toca la tonalidad ni las notas |
+| **Indicador de preset modificado** | 🔧 | «*» junto al nombre; elegir el mismo preset descarta los cambios |
+
 ## Pendientes conocidos (no bloquean el uso)
 
-- ⏳ Comparación A/B de ajustes e indicador de preset modificado.
 - ⏳ Integración ARA2 para DAW que la soportan (pospuesta por decisión del usuario; FL Studio no la usa).
-- ⏳ Desafinación por nota (escalas microtonales), opcional.
+- ⏳ Saltos de más de ~4 semitonos: la salida sigue el cambio cuando el detector lo confirma (~20 ms).
 
 ## Cómo se verificó
 
-Cada punto 🔧 tiene su test automático: `tests/unit/TransitionTests.cpp` (cambio de nota en Live, Tracking y Vintage, con la misma y con distinta desafinación), `tests/unit/AuditTests.cpp` (salida MIDI, octava exacta, formas de vibrato, importación con detalle y como curvas, escala de vibrato de curvas) y la captura de la pestaña Notas en `NovaPitchSnapshot`. Todo el conjunto (95 casos), el host test sobre el binario, pluginval 10 y clap-validator pasan.
+Cada punto 🔧 tiene su test automático: `tests/unit/TransitionTests.cpp` (cambio de nota en Live, Tracking y Vintage, con la misma y con distinta desafinación), `tests/unit/AuditTests.cpp` (salida MIDI, octava exacta, formas de vibrato, importación con detalle y como curvas, escala de vibrato de curvas), `tests/unit/DetuneAbTests.cpp` (desafinación por nota en el mapeo, el procesador, las armonías, el modo gráfico y Sincronizar; A/B y marcador de modificado) y la captura de la pestaña Notas en `NovaPitchSnapshot`. Todo el conjunto (102 casos), el host test sobre el binario, pluginval 10 y clap-validator pasan.

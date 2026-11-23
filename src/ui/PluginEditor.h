@@ -119,6 +119,9 @@ private:
     // Preset bar (header)
     juce::ComboBox presetBox;
     juce::TextButton prevPreset { "<" }, nextPreset { ">" }, savePreset, optionsButton;
+    std::array<juce::TextButton, 2> abButtons; // A/B comparison
+    bool shownModified = false;
+    int modifiedCheckCounter = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog;
     juce::String shownPresetName;
     int shownMidiGeneration = -1;

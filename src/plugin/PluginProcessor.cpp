@@ -67,7 +67,10 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.transpose = get (ParamIDs::transpose);
     params.mix = get (ParamIDs::mix);
     for (int pc = 0; pc < 12; ++pc)
+    {
         params.noteStates[static_cast<size_t> (pc)] = get (ParamIDs::noteState (pc));
+        params.noteDetunes[static_cast<size_t> (pc)] = get (ParamIDs::noteDetune (pc));
+    }
     params.formantPreserve = get (ParamIDs::formantPreserve);
     params.formantShift = get (ParamIDs::formantShift);
     params.formantLink = get (ParamIDs::formantLink);
@@ -299,7 +302,10 @@ int NovaPitchProcessor::syncToOtherInstances()
     s.key = choiceIndex (params.key);
     s.scale = choiceIndex (params.scale);
     for (size_t pc = 0; pc < 12; ++pc)
+    {
         s.noteStates[pc] = choiceIndex (params.noteStates[pc]);
+        s.noteDetuneCents[pc] = params.noteDetunes[pc]->load();
+    }
     s.referenceA4 = params.referenceA4->load();
     return InstanceRegistry::getInstance().broadcast (s, this);
 }
@@ -323,7 +329,10 @@ void NovaPitchProcessor::applyPendingSync()
     setParameterValue (ParamIDs::key, static_cast<float> (s.key));
     setParameterValue (ParamIDs::scale, static_cast<float> (s.scale));
     for (int pc = 0; pc < 12; ++pc)
+    {
         setParameterValue (ParamIDs::noteState (pc), static_cast<float> (s.noteStates[static_cast<size_t> (pc)]));
+        setParameterValue (ParamIDs::noteDetune (pc), s.noteDetuneCents[static_cast<size_t> (pc)]);
+    }
     setParameterValue (ParamIDs::referenceA4, s.referenceA4);
 }
 
@@ -469,7 +478,10 @@ int NovaPitchProcessor::importGraphFromAuto (int detail)
     dsp::NoteMapper mapper;
     mapper.setKeyAndScale (choiceIndex (params.key), dsp::scaleTypeFromIndex (choiceIndex (params.scale)));
     for (int pc = 0; pc < 12; ++pc)
+    {
         mapper.setNoteState (pc, dsp::noteStateFromIndex (choiceIndex (params.noteStates[static_cast<size_t> (pc)])));
+        mapper.setNoteDetune (pc, params.noteDetunes[static_cast<size_t> (pc)]->load());
+    }
     // detail: 0 = fewer, longer notes; 1 = normal; 2 = more, shorter notes (fast runs, ornaments)
     static constexpr double minNote[] = { 0.15, 0.08, 0.04 };
     static constexpr double smooth[] = { 0.08, 0.04, 0.015 };
@@ -551,7 +563,10 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
 
     noteMapper.setKeyAndScale (choiceIndex (params.key), dsp::scaleTypeFromIndex (choiceIndex (params.scale)));
     for (int pc = 0; pc < 12; ++pc)
+    {
         noteMapper.setNoteState (pc, dsp::noteStateFromIndex (choiceIndex (params.noteStates[static_cast<size_t> (pc)])));
+        noteMapper.setNoteDetune (pc, params.noteDetunes[static_cast<size_t> (pc)]->load (std::memory_order_relaxed));
+    }
 
     blockMode = currentMode();
     a4Hz = params.referenceA4->load (std::memory_order_relaxed);
@@ -725,7 +740,7 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
             if (std::abs (centreMidi - static_cast<float> (candidate)) < best)
             {
                 best = std::abs (centreMidi - static_cast<float> (candidate));
-                target = { true, true, candidate, static_cast<float> (candidate) };
+                target = { true, true, candidate, noteMapper.position (candidate) }; // incl. per-note detune
             }
         }
     }
@@ -799,6 +814,9 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
         hf.detectedMidi = detectedMidi;
         hf.leadOutputMidi = detectedMidi + totalCents / 100.0f;
         hf.leadNote = target.hasTarget ? target.note + static_cast<int> (transposeSemitones) : -1;
+        hf.leadTargetMidi = target.hasTarget ? target.targetMidi + transposeSemitones : hf.leadTargetMidi;
+        for (int pc = 0; pc < 12; ++pc)
+            hf.detune[static_cast<size_t> (pc)] = noteMapper.getNoteDetune (pc);
         uint16_t mask = 0;
         for (int pc = 0; pc < 12; ++pc)
             if (const auto st = noteMapper.getEffectiveState (pc); st == dsp::NoteState::Active || st == dsp::NoteState::Ignore)

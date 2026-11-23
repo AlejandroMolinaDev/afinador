@@ -152,12 +152,16 @@ bool HarmonyEngine::voiceTargetMidi (int index, const HarmonyFrame& f, float& ou
         return false;
 
     const int base = f.leadNote >= 0 ? f.leadNote : static_cast<int> (std::lround (f.leadOutputMidi));
-    const float deviation = f.leadOutputMidi - static_cast<float> (base); // vibrato / expression of the lead
+    // Expression of the lead (vibrato, deviation) relative to its own detuned target;
+    // each voice then sits on its own note's detuned position.
+    const float baseTarget = (f.leadNote >= 0 && ! std::isnan (f.leadTargetMidi)) ? f.leadTargetMidi : static_cast<float> (base);
+    const float deviation = f.leadOutputMidi - baseTarget;
+    auto tuned = [&f] (int n) { return static_cast<float> (n) + f.detune[static_cast<size_t> (((n % 12) + 12) % 12)]; };
 
     switch (s.mode)
     {
         case HarmonyMode::Diatonic:
-            out = static_cast<float> (stepDegrees (base, s.degrees, f.scaleMask)) + deviation;
+            out = tuned (stepDegrees (base, s.degrees, f.scaleMask)) + deviation;
             return true;
         case HarmonyMode::Semitones:
             out = f.leadOutputMidi + static_cast<float> (s.semitones);
@@ -165,7 +169,7 @@ bool HarmonyEngine::voiceTargetMidi (int index, const HarmonyFrame& f, float& ou
         case HarmonyMode::Midi:
             if (index >= f.numHeld)
                 return false;
-            out = static_cast<float> (f.held[static_cast<size_t> (index)]) + deviation;
+            out = tuned (f.held[static_cast<size_t> (index)]) + deviation;
             return true;
         case HarmonyMode::Off:
             break;

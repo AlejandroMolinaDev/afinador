@@ -397,6 +397,22 @@ detected pitch while the host plays and indexes it by the host timeline.
   Bypass and switching it off send the pending note off. The plugin now declares MIDI output
   (`NEEDS_MIDI_OUTPUT TRUE`): VST3 event output bus, CLAP note output port, AU MIDI output.
 
+### Per-note detune (microtonal scales)
+- `noteDetune0..11` (±50 c, song settings). The NoteMapper works on detuned positions `n + d[pc]`: both
+  the nearest-note decision and the hysteresis compare distances to them, and the target is the detuned
+  position. MIDI Target uses the held note's detuned position. Harmony voices: the lead's expression is
+  measured against its detuned target and each voice sits on its own note's detuned position (frame
+  carries `leadTargetMidi` + the 12 detunes; NaN keeps the old behaviour for callers that don't set it).
+  Graph import creates notes at the detuned pitch; Sincronizar sends the detunes.
+- Measured: sung E4 +10 c with E at −14 c → output E4 −14 c within 3 c (speed 0).
+
+### A/B comparison
+- Two slots of sound (non-song) parameters in the state child `ABCompare` (one property per parameter
+  id + the preset name). Switching stores the current sound in the active slot and applies the other
+  with the preset machinery (parameters missing from a slot go to their defaults). The "*" marker
+  compares the sound with the current preset's full values (factory: defaults + overrides; user: file,
+  cached by modification time), on the message thread at 5 Hz.
+
 ### Other additions
 - `midiTargetExact`: MIDI Target uses the held note in its own octave (no octave folding).
 - `vibShape`: sine, triangle, softened square (tanh 5·sin) and sawtooth (rise over 96 % of the cycle, fall

@@ -6,7 +6,7 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 ![NovaPitch — Fase 9, modo gráfico con corrección temporal](docs/img/fase9-tiempo.png)
 
-**Estado:** Fase 9 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, 4 voces de armonía, MIDI Target, aprender escala por MIDI, **modo gráfico sin ARA** (captura reproduciendo en FL Studio, notas / líneas / curvas, deshacer ilimitado), **corrección temporal no destructiva**, **detector de tonalidad** («Escuchar»), **sincronización entre instancias**, **teclado de 12 notas** (Activa / Ignorar / Eliminar) y **salida MIDI** de las notas corregidas. Comparativa con un afinador profesional: [`docs/AUDITORIA_FUNCIONES.md`](docs/AUDITORIA_FUNCIONES.md). ARA2 queda pospuesto (FL no lo soporta). **Fase 10:** instaladores (Windows Inno Setup, macOS `.pkg` Universal) y [guía de usuario en español](docs/USER_GUIDE_es.md). Versión **0.9.0 (beta)**: falta tu prueba en FL Studio para llegar a 1.0.0. Ver `docs/ROADMAP.md`.
+**Estado:** Fase 9 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, 4 voces de armonía, MIDI Target, aprender escala por MIDI, **modo gráfico sin ARA** (captura reproduciendo en FL Studio, notas / líneas / curvas, deshacer ilimitado), **corrección temporal no destructiva**, **detector de tonalidad** («Escuchar»), **sincronización entre instancias**, **teclado de 12 notas** (Activa / Ignorar / Eliminar) con **desafinación por nota** (escalas microtonales), **comparación A/B** de sonidos y **salida MIDI** de las notas corregidas. Comparativa con un afinador profesional: [`docs/AUDITORIA_FUNCIONES.md`](docs/AUDITORIA_FUNCIONES.md). ARA2 queda pospuesto (FL no lo soporta). **Fase 10:** instaladores (Windows Inno Setup, macOS `.pkg` Universal) y [guía de usuario en español](docs/USER_GUIDE_es.md). Versión **0.9.0 (beta)**: falta tu prueba en FL Studio para llegar a 1.0.0. Ver `docs/ROADMAP.md`.
 
 ## Instalar (usuarios)
 Descarga el instalador de la última ejecución de CI (pestaña *Actions* → artefactos) o de *Releases*:
@@ -117,7 +117,7 @@ xattr -dr com.apple.quarantine NovaPitch.vst3 NovaPitch.component NovaPitch.clap
 1. *Options → Manage plugins → Find more plugins* (o *Find installed plugins*).
 2. Busca **NovaPitch** (aparecerá como VST3, CLAP y, en Mac, AU; son entradas separadas).
 3. Mixer → un slot de insert → NovaPitch.
-4. La ventana muestra "FL Studio detectado", el formato cargado, frecuencia de muestreo, tamaños de bloque, canales y eventos MIDI recibidos.
+4. El pie de la ventana muestra el host ("FL Studio"), el formato cargado, frecuencia de muestreo, tamaños de bloque, canales y eventos MIDI recibidos.
 
 Checklist completo de pruebas manuales: [`docs/TESTING_FL.md`](docs/TESTING_FL.md).
 

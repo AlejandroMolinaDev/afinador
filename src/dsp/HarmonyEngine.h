@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace novapitch::dsp
@@ -55,6 +56,9 @@ struct HarmonyFrame
     float detectedMidi = 0.0f;   ///< input pitch
     float leadOutputMidi = 0.0f; ///< lead pitch after correction, vibrato and transposition
     int leadNote = -1;           ///< lead target note incl. transposition (-1 = none)
+    /** Lead target incl. its per-note detune and transposition (NaN = leadNote exactly). */
+    float leadTargetMidi = std::numeric_limits<float>::quiet_NaN();
+    std::array<float, 12> detune {}; ///< per-pitch-class detune in semitones (microtonal scales)
     uint16_t scaleMask = 0x0fff; ///< valid pitch classes for diatonic steps
     float inputRmsDb = -120.0f;
     int numHeld = 0;

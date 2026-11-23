@@ -425,12 +425,13 @@ int GraphModel::importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds, d
     mapper.reset();
     int created = 0;
     int runNote = -1;
+    float runPitch = 0.0f; // the note's target incl. its per-note detune
     double runStart = 0.0, runEnd = 0.0, lastTime = -1.0e9;
 
     auto flush = [&] {
         if (runNote >= 0 && runEnd - runStart >= minNoteSeconds)
         {
-            addNote (runStart, runEnd, static_cast<float> (runNote));
+            addNote (runStart, runEnd, runPitch);
             ++created;
         }
         runNote = -1;
@@ -454,6 +455,7 @@ int GraphModel::importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds, d
         {
             flush();
             runNote = note;
+            runPitch = target.targetMidi;
             runStart = f.time;
         }
         runEnd = f.time + kFrameSeconds;

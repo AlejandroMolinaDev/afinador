@@ -122,6 +122,11 @@ int main (int argc, char* argv[])
         return nullptr;
     };
 
+    // Microtonal example for the Notas tab: E a just third (-14 c), Bb a harmonic seventh (-31 c).
+    for (const auto& [id, cents] : { std::pair { "noteDetune4", -14.0f }, std::pair { "noteDetune10", -31.0f } })
+        if (auto* p = proc.getValueTreeState().getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (cents));
+
     const std::pair<const char*, const char*> tabs[] = { { "Notas", "notas" }, { "Formantes", "formantes" }, { "Vibrato", "vibrato" },
                                                          { "Armonías", "armonias" }, { "Bus", "bus" }, { "MIDI", "midi" } };
     for (const auto& [tab, slug] : tabs)

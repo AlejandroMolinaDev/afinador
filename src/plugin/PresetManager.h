@@ -50,8 +50,34 @@ public:
     /** Parameters that presets never touch (song settings). */
     static bool isSongParameter (const juce::String& paramId);
 
+    // Sound snapshots ------------------------------------------------------------
+    using Values = std::vector<std::pair<juce::String, float>>;
+    /** Real values of every sound (non-song) parameter. */
+    Values captureSound() const;
+
+    // A/B comparison -------------------------------------------------------------
+    /** Two slots of sound settings saved with the project. The current settings
+        are the active slot; switching stores them and recalls the other one
+        (an empty slot starts as a copy). Song settings are never touched. */
+    static constexpr const char* kCompareTag = "ABCompare";
+    int getActiveSlot() const; // 0 = A, 1 = B
+    void selectSlot (int slot);
+    /** Copies the active slot's settings (and preset name) into the other slot. */
+    void copyActiveToOther();
+
+    /** True when the sound differs from the current preset as loaded / saved. */
+    bool isModified() const;
+
 private:
     void applyValues (const std::vector<std::pair<juce::String, float>>& values);
+    /** Full set of real values a preset sets (defaults for anything it doesn't list). */
+    bool presetSound (const juce::String& name, Values& out) const;
+    juce::ValueTree compareTree() const;
+    void storeSlot (int slot);
+
+    mutable juce::String cachedPresetName;
+    mutable juce::Time cachedPresetTime;
+    mutable Values cachedPresetValues;
 
     juce::AudioProcessorValueTreeState& state;
     juce::File userFolder;

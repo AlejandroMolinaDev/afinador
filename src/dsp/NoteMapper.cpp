@@ -30,6 +30,12 @@ void NoteMapper::setNoteState (int pitchClass, NoteState state) noexcept
     recompute();
 }
 
+void NoteMapper::setNoteDetune (int pitchClass, float cents) noexcept
+{
+    const float c = std::isfinite (cents) ? std::fmax (-50.0f, std::fmin (50.0f, cents)) : 0.0f;
+    detune[static_cast<size_t> (wrap (pitchClass))] = c / 100.0f;
+}
+
 void NoteMapper::recompute() noexcept
 {
     const auto mask = scaleMask (scale);
@@ -65,7 +71,7 @@ int NoteMapper::nearestValid (float midi) const noexcept
         const int n = centre + offset;
         if (! isValid (n))
             continue;
-        const float d = std::abs (midi - static_cast<float> (n));
+        const float d = std::abs (midi - position (n));
         if (d < bestDist)
         {
             bestDist = d;
@@ -91,8 +97,8 @@ NoteTarget NoteMapper::map (float midi) noexcept
     int chosen = nearest;
     if (currentNote >= 0 && currentNote != nearest && isValid (currentNote))
     {
-        const float dCurrent = std::abs (midi - static_cast<float> (currentNote));
-        const float dNearest = std::abs (midi - static_cast<float> (nearest));
+        const float dCurrent = std::abs (midi - position (currentNote));
+        const float dNearest = std::abs (midi - position (nearest));
         // Stay on the current note until the pitch is clearly closer to another one.
         if (dCurrent <= dNearest + 2.0f * hysteresis && dCurrent < 1.5f)
             chosen = currentNote;
@@ -101,7 +107,7 @@ NoteTarget NoteMapper::map (float midi) noexcept
     currentNote = chosen;
     t.hasTarget = true;
     t.note = chosen;
-    t.targetMidi = static_cast<float> (chosen);
+    t.targetMidi = position (chosen); // equal temperament + this note's detune
     t.correct = effective[static_cast<size_t> (wrap (chosen))] == NoteState::Active;
     return t;
 }

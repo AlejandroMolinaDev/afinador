@@ -12,7 +12,7 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 |---|---|---|---|---|---|---|
 | 1 | *Manage plugins → Find more plugins* detecta NovaPitch sin errores | | | | | |
 | 2 | Aparece como **efecto** (no como generador) | | | | | |
-| 3 | Carga en un insert del Mixer; la ventana muestra "FL Studio detectado" y el formato correcto | | | | | |
+| 3 | Carga en un insert del Mixer; el pie de la ventana muestra "FL Studio" y el formato correcto | | | | | |
 | 4 | El audio pasa sin cambios (A/B con el slot desactivado: idéntico, sin clics) | | | | | |
 | 5 | "Canales" muestra Estéreo → Estéreo en un insert del Mixer | | | | | |
 | 6 | "Latencia reportada" = 0 y no hay desfase con otras pistas | | | | | |
@@ -211,6 +211,19 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 106 | **Octava exacta**: con nota objetivo MIDI una octava arriba, la voz salta a esa octava | | |
 | 107 | Forma del vibrato (seno, triángulo, cuadrada, sierra) se oye distinta y sin clics | | |
 | 108 | Modo gráfico: *Importar → Notas más detalle* en un pasaje rápido; *Importar → Curvas* y escalar su vibrato al 0 % y al 200 %; mover con flechas | | |
+
+## Comparación A/B y desafinación por nota
+
+> Automático en CI: A/B guarda dos sonidos sin tocar tonalidad/escala/notas y se conserva al reabrir; el marcador «*» sigue los cambios de sonido y no los de la canción; la desafinación por nota mueve el destino y la decisión de nota, llega a las armonías, a la importación del modo gráfico y a Sincronizar.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 109 | **A/B**: ajustar un sonido en A, pulsar B, cambiar el sonido, alternar A ↔ B mientras suena la canción | | |
+| 110 | `···` → *Copiar el sonido A en B*; guardar el proyecto, reabrir: A y B siguen ahí y la tonalidad no cambió | | |
+| 111 | El preset muestra «*» al tocar un knob de sonido (no al cambiar la tonalidad); elegir el mismo preset descarta los cambios | | |
+| 112 | Pestaña Notas: rueda sobre una tecla desafina esa nota (±1 ¢, Mayús ±10 ¢); clic derecho → Desafinación → valores rápidos y *Otro valor…* | | |
+| 113 | Con E a −14 ¢ y velocidad 0, una E cantada sale −14 ¢ (comprobar con un afinador externo o el medidor) | | |
+| 114 | Armonía diatónica sobre una escala desafinada: cada voz cae en su nota desafinada | | |
 
 ## Notas / incidencias encontradas
 - 

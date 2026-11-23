@@ -65,6 +65,9 @@ juce::String harmonyVoice (const char* field, int voice);
 
 /** "noteState0" (C) .. "noteState11" (B). */
 juce::String noteState (int pitchClass);
+
+/** "noteDetune0" (C) .. "noteDetune11" (B): per-note detune in cents (feature audit). */
+juce::String noteDetune (int pitchClass);
 } // namespace ParamIDs
 
 /** Processing modes. Stored in state: append only. */

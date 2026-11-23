@@ -6,6 +6,8 @@
 #include "ui/LookAndFeel.h"
 
 #include <algorithm>
+#include <cmath>
+#include <iterator>
 
 namespace novapitch
 {
@@ -30,6 +32,15 @@ NoteKeyboard::NoteKeyboard (juce::AudioProcessorValueTreeState& s) : state (s)
                 repaint();
             });
             noteAttachments[static_cast<size_t> (pc)]->sendInitialUpdate();
+        }
+    for (int pc = 0; pc < 12; ++pc)
+        if (auto* p = state.getParameter (ParamIDs::noteDetune (pc)))
+        {
+            detuneAttachments[static_cast<size_t> (pc)] = std::make_unique<juce::ParameterAttachment> (*p, [this, pc] (float v) {
+                detunes[static_cast<size_t> (pc)] = v;
+                repaint();
+            });
+            detuneAttachments[static_cast<size_t> (pc)]->sendInitialUpdate();
         }
     if (auto* p = state.getParameter (ParamIDs::key))
     {
@@ -60,7 +71,8 @@ NoteKeyboard::NoteKeyboard (juce::AudioProcessorValueTreeState& s) : state (s)
         b->setColour (juce::TextButton::textColourOffId, Palette::textPrimary.withAlpha (0.85f));
         addAndMakeVisible (*b);
     }
-    setTooltip (u8 ("Clic: cambia el estado de la nota (Escala → Activa → Ignorar → Eliminar). Clic derecho: elegir.\n"
+    setTooltip (u8 ("Clic: cambia el estado de la nota (Escala → Activa → Ignorar → Eliminar). Clic derecho: estado o "
+                    "desafinación.\nRueda sobre una tecla: desafina esa nota ±1 ¢ (Mayús: ±10 ¢), para escalas microtonales.\n"
                     "Activa: destino de la corrección. Ignorar: pasa la afinación original. "
                     "Eliminar: se corrige a la nota válida más cercana."));
 }
@@ -85,6 +97,47 @@ void NoteKeyboard::setState (int pitchClass, int newState)
         a->setValueAsCompleteGesture (static_cast<float> (juce::jlimit (0, dsp::kNumNoteStates - 1, newState)));
 }
 
+void NoteKeyboard::setDetune (int pitchClass, float cents)
+{
+    if (pitchClass < 0 || pitchClass >= 12)
+        return;
+    if (auto& a = detuneAttachments[static_cast<size_t> (pitchClass)])
+        a->setValueAsCompleteGesture (juce::jlimit (-50.0f, 50.0f, std::round (cents * 10.0f) / 10.0f));
+}
+
+float NoteKeyboard::getDetune (int pitchClass) const
+{
+    return detunes[static_cast<size_t> (juce::jlimit (0, 11, pitchClass))];
+}
+
+void NoteKeyboard::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    const int pc = pitchClassAt (e.position);
+    const float dy = w.isReversed ? -w.deltaY : w.deltaY;
+    if (pc < 0 || std::abs (dy) < 1.0e-4f)
+        return;
+    setDetune (pc, getDetune (pc) + (dy > 0.0f ? 1.0f : -1.0f) * (e.mods.isShiftDown() ? 10.0f : 1.0f));
+}
+
+void NoteKeyboard::askExactDetune (int pc)
+{
+    detuneDialog = std::make_unique<juce::AlertWindow> (u8 ("Desafinación de ") + u8 (kNames[static_cast<size_t> (pc)]),
+                                                        u8 ("Cents respecto al temperamento igual (−50 a +50)."),
+                                                        juce::MessageBoxIconType::NoIcon, this);
+    detuneDialog->addTextEditor ("cents", juce::String (getDetune (pc), 1));
+    detuneDialog->addButton (u8 ("Aceptar"), 1, juce::KeyPress (juce::KeyPress::returnKey));
+    detuneDialog->addButton (u8 ("Cancelar"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    detuneDialog->enterModalState (true, juce::ModalCallbackFunction::create ([this, pc] (int result) {
+        if (result == 1 && detuneDialog != nullptr)
+        {
+            const auto text = detuneDialog->getTextEditorContents ("cents").replaceCharacter (',', '.')
+                                  .replace (u8 ("−"), "-").retainCharacters ("0123456789.+-");
+            setDetune (pc, text.getFloatValue());
+        }
+        detuneDialog.reset();
+    }));
+}
+
 int NoteKeyboard::getState (int pitchClass) const
 {
     return states[static_cast<size_t> (juce::jlimit (0, 11, pitchClass))];
@@ -103,7 +156,7 @@ void NoteKeyboard::resized()
 {
     auto r = getLocalBounds();
     auto side = r.removeFromRight (190).reduced (12, 8);
-    side.removeFromTop (54); // legend (painted)
+    side.removeFromTop (70); // legend (painted)
     allActiveButton.setBounds (side.removeFromBottom (26));
     side.removeFromBottom (6);
     resetButton.setBounds (side.removeFromBottom (26));
@@ -142,13 +195,34 @@ void NoteKeyboard::mouseDown (const juce::MouseEvent& e)
         return;
     if (e.mods.isPopupMenu())
     {
+        static constexpr float kQuick[] = { -50.0f, -31.0f, -25.0f, -14.0f, 0.0f, 2.0f, 14.0f, 25.0f, 50.0f };
+        juce::PopupMenu detune;
+        for (size_t i = 0; i < std::size (kQuick); ++i)
+        {
+            const float c = kQuick[i];
+            const auto label = std::abs (c) < 0.01f ? u8 ("Sin desafinación (0 ¢)") : (c > 0.0f ? "+" : "") + juce::String (juce::roundToInt (c)) + u8 (" ¢");
+            detune.addItem (100 + static_cast<int> (i), label, true, std::abs (getDetune (pc) - c) < 0.05f);
+        }
+        detune.addSeparator();
+        detune.addItem (200, u8 ("Otro valor…"));
+
         juce::PopupMenu menu;
         menu.addSectionHeader (u8 (kNames[static_cast<size_t> (pc)]));
         for (int s = 0; s < dsp::kNumNoteStates; ++s)
             menu.addItem (s + 1, u8 (kStateNames[static_cast<size_t> (s)]), true, getState (pc) == s);
+        menu.addSeparator();
+        menu.addSubMenu (u8 ("Desafinación (") + (getDetune (pc) > 0.05f ? "+" : "") + juce::String (getDetune (pc), 1) + u8 (" ¢)"), detune);
+        menu.addItem (300, u8 ("Quitar todas las desafinaciones"));
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [this, pc] (int result) {
-            if (result > 0)
+            if (result >= 1 && result <= dsp::kNumNoteStates)
                 setState (pc, result - 1);
+            else if (result >= 100 && result < 100 + static_cast<int> (std::size (kQuick)))
+                setDetune (pc, kQuick[static_cast<size_t> (result - 100)]);
+            else if (result == 200)
+                askExactDetune (pc);
+            else if (result == 300)
+                for (int k = 0; k < 12; ++k)
+                    setDetune (k, 0.0f);
         });
         return;
     }
@@ -202,6 +276,13 @@ void NoteKeyboard::paint (juce::Graphics& g)
         g.setFont (juce::FontOptions (black ? 8.5f : 10.0f));
         g.setColour (st == static_cast<int> (dsp::NoteState::FollowScale) ? Palette::textMuted : Palette::textPrimary.withAlpha (0.9f));
         g.drawFittedText (u8 (kStateNames[static_cast<size_t> (st)]), text.removeFromBottom (13.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        if (const float d = getDetune (pc); std::abs (d) >= 0.05f)
+        {
+            g.setColour (Palette::warn);
+            g.setFont (juce::FontOptions (black ? 8.5f : 10.0f, juce::Font::bold));
+            g.drawFittedText ((d > 0.0f ? "+" : "") + juce::String (d, std::abs (d - std::round (d)) < 0.05f ? 0 : 1) + u8 (" ¢"),
+                              text.removeFromBottom (13.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        }
         if (removed)
         {
             g.setColour (Palette::textMuted.withAlpha (0.35f));
@@ -220,7 +301,8 @@ void NoteKeyboard::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (11.0f));
     const std::pair<juce::Colour, const char*> items[] = { { accent, "Activa (destino)" },
                                                            { Palette::warn, "Ignorar (sin corregir)" },
-                                                           { Palette::textMuted.withAlpha (0.4f), "Eliminar / fuera de escala" } };
+                                                           { Palette::textMuted.withAlpha (0.4f), "Eliminar / fuera de escala" },
+                                                           { juce::Colours::transparentBlack, "Rueda: desafinar (±1 ¢)" } };
     for (const auto& [colour, label] : items)
     {
         auto row = legend.removeFromTop (17.0f);

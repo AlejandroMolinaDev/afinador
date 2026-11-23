@@ -61,6 +61,7 @@ juce::File PresetManager::defaultUserFolder()
 bool PresetManager::isSongParameter (const juce::String& id)
 {
     return id == ParamIDs::key || id == ParamIDs::scale || id == ParamIDs::referenceA4 || id.startsWith ("noteState")
+           || id.startsWith ("noteDetune")
            || id == ParamIDs::graphMode || id == ParamIDs::midiOut;
 }
 
@@ -90,6 +91,145 @@ void PresetManager::applyValues (const Values& values)
         if (! isSongParameter (id))
             if (auto* param = state.getParameter (id))
                 param->setValueNotifyingHost (param->convertTo0to1 (value));
+}
+
+PresetManager::Values PresetManager::captureSound() const
+{
+    Values out;
+    for (auto* p : state.processor.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! isSongParameter (ranged->getParameterID()))
+                out.emplace_back (ranged->getParameterID(), ranged->convertFrom0to1 (ranged->getValue()));
+    return out;
+}
+
+bool PresetManager::presetSound (const juce::String& name, Values& out) const
+{
+    Values listed;
+    bool found = false;
+    for (const auto& f : factoryPresets())
+        if (juce::String::fromUTF8 (f.name) == name)
+        {
+            listed = f.values;
+            found = true;
+            break;
+        }
+    if (! found)
+    {
+        const auto file = userFolder.getChildFile (name + kFileExtension);
+        if (! file.existsAsFile())
+            return false;
+        if (name == cachedPresetName && file.getLastModificationTime() == cachedPresetTime)
+        {
+            out = cachedPresetValues;
+            return true;
+        }
+        auto xml = juce::XmlDocument::parse (file);
+        if (xml == nullptr || ! xml->hasTagName ("NovaPitchPreset"))
+            return false;
+        for (auto* e : xml->getChildWithTagNameIterator ("Param"))
+            listed.emplace_back (e->getStringAttribute ("id"), static_cast<float> (e->getDoubleAttribute ("value")));
+        cachedPresetName = name;
+        cachedPresetTime = file.getLastModificationTime();
+    }
+
+    out.clear();
+    for (auto* p : state.processor.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! isSongParameter (ranged->getParameterID()))
+            {
+                float v = ranged->convertFrom0to1 (ranged->getDefaultValue());
+                for (const auto& [id, value] : listed)
+                    if (id == ranged->getParameterID())
+                        v = value;
+                out.emplace_back (ranged->getParameterID(), v);
+            }
+    if (! found)
+        cachedPresetValues = out;
+    return true;
+}
+
+bool PresetManager::isModified() const
+{
+    Values expected;
+    if (! presetSound (getCurrentPresetName(), expected))
+        return false;
+    for (const auto& [id, value] : expected)
+        if (auto* p = state.getParameter (id))
+            if (std::abs (p->getValue() - p->convertTo0to1 (value)) > 1.0e-4f)
+                return true;
+    return false;
+}
+
+juce::ValueTree PresetManager::compareTree() const
+{
+    auto t = state.state.getChildWithName (kCompareTag);
+    if (! t.isValid())
+    {
+        t = juce::ValueTree (kCompareTag);
+        t.setProperty ("active", 0, nullptr);
+        state.state.appendChild (t, nullptr);
+    }
+    return t;
+}
+
+int PresetManager::getActiveSlot() const
+{
+    const auto t = state.state.getChildWithName (kCompareTag);
+    return t.isValid() ? juce::jlimit (0, 1, static_cast<int> (t.getProperty ("active", 0))) : 0;
+}
+
+void PresetManager::storeSlot (int slot)
+{
+    auto t = compareTree();
+    auto s = t.getChildWithProperty ("index", slot);
+    if (! s.isValid())
+    {
+        s = juce::ValueTree ("Slot");
+        s.setProperty ("index", slot, nullptr);
+        t.appendChild (s, nullptr);
+    }
+    s.removeAllProperties (nullptr);
+    s.setProperty ("index", slot, nullptr);
+    s.setProperty (kPresetNameProperty, getCurrentPresetName(), nullptr);
+    for (const auto& [id, value] : captureSound())
+        s.setProperty (juce::Identifier (id), value, nullptr);
+}
+
+void PresetManager::selectSlot (int slot)
+{
+    slot = juce::jlimit (0, 1, slot);
+    const int active = getActiveSlot();
+    if (slot == active)
+        return;
+
+    storeSlot (active); // the current sound belongs to the slot we leave
+    auto t = compareTree();
+    t.setProperty ("active", slot, nullptr);
+
+    const auto target = t.getChildWithProperty ("index", slot);
+    if (! target.isValid())
+    {
+        storeSlot (slot); // first visit: B starts as a copy of A
+        return;
+    }
+    Values values;
+    for (auto* p : state.processor.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            const auto id = ranged->getParameterID();
+            if (! isSongParameter (id) && target.hasProperty (id))
+                values.emplace_back (id, static_cast<float> (static_cast<double> (target.getProperty (id))));
+        }
+    applyValues (values); // parameters missing from the slot (added later) go to their defaults
+    state.state.setProperty (kPresetNameProperty, target.getProperty (kPresetNameProperty, getCurrentPresetName()), nullptr);
+}
+
+void PresetManager::copyActiveToOther()
+{
+    const int active = getActiveSlot();
+    storeSlot (active);
+    storeSlot (1 - active); // same settings and preset name
 }
 
 bool PresetManager::loadPreset (const juce::String& name)

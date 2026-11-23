@@ -211,6 +211,7 @@ private:
         std::atomic<float>* transpose = nullptr;
         std::atomic<float>* mix = nullptr;
         std::array<std::atomic<float>*, 12> noteStates {};
+        std::array<std::atomic<float>*, 12> noteDetunes {};
         std::atomic<float>* midiTarget = nullptr;
         std::atomic<float>* midiScaleLearn = nullptr;
         struct Voice { std::atomic<float>* mode, * degrees, * semitones, * formant, * pan, * level, * humanize, * mute, * solo; };

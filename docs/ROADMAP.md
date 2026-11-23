@@ -58,7 +58,7 @@ Estado por fases (ver especificación original, sección 11).
 - [x] Color de acento configurable (guardado en el proyecto).
 - [ ] **Revisión visual por tu parte** (criterio de aceptación de la Fase 6): capturas en el artefacto `UI-snapshots-*` de cada ejecución de CI.
 - [x] Preset "Armonías 3as" (Fase 7).
-- [ ] Indicador de preset modificado ("*") y comparación A/B.
+- [x] Indicador de preset modificado ("*") y comparación A/B (auditoría de funciones).
 - [ ] Archivo global de usuario para mapeos MIDI por defecto (opcional en la especificación; hoy se guardan en cada proyecto).
 - [x] Teclado de 12 notas en la UI: pestaña Notas (auditoría de funciones).
 - [ ] MIDI Learn en VST3 dentro de FL: FL no envía CC a efectos VST3 sin parámetros CC emulados (desactivados a propósito). Se documenta "Link to controller" de FL; en CLAP/AU/Standalone funciona directo.
@@ -101,8 +101,8 @@ Estado por fases (ver especificación original, sección 11).
 - [x] Cambios de nota inmediatos con velocidad 0 (antes la salida seguía ~20 ms en la nota anterior).
 - [x] Salida MIDI de las notas corregidas, octava exacta en la nota objetivo MIDI, forma del vibrato artificial.
 - [x] Modo gráfico: detalle de importación, importar como curvas, escalar el vibrato de una curva, mover con flechas.
-- [ ] Comparación A/B de ajustes e indicador de preset modificado (ver Fase 6).
-- [ ] Desafinación por nota (escalas microtonales), opcional.
+- [x] Comparación A/B de sonidos e indicador de preset modificado («*»).
+- [x] Desafinación por nota (±50 ¢, escalas microtonales) en la pestaña Notas.
 - [ ] Saltos de más de ~4 semitonos: la salida sigue el cambio cuando el detector lo confirma (~20 ms); ampliar la búsqueda de épocas sin crear errores de octava.
 
 ### Fase 10

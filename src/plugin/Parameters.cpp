@@ -12,6 +12,11 @@ juce::String ParamIDs::noteState (int pitchClass)
     return "noteState" + juce::String (pitchClass);
 }
 
+juce::String ParamIDs::noteDetune (int pitchClass)
+{
+    return "noteDetune" + juce::String (pitchClass);
+}
+
 juce::String ParamIDs::harmonyVoice (const char* field, int voice)
 {
     return juce::String (field) + juce::String (voice);
@@ -275,6 +280,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { ParamIDs::midiTargetExact, 1 }, u8 ("MIDI: octava exacta"), false));
     layout.add (makeChoice (ParamIDs::vibShape, "Vibrato: forma",
                             juce::StringArray { u8 ("Seno"), u8 ("Triángulo"), u8 ("Cuadrada"), u8 ("Sierra") }, 0));
+
+    // Per-note detune (microtonal scales): song settings, like the note states.
+    for (int pc = 0; pc < 12; ++pc)
+    {
+        const auto id = ParamIDs::noteDetune (pc);
+        const auto name = std::string ("Nota ") + noteNames[static_cast<size_t> (pc)] + ": desafinación";
+        layout.add (makeFloat (id.toRawUTF8(), name.c_str(), -50.0f, 50.0f, 0.1f, 0.0f, "cents", [] (float v) {
+            return (v > 0.05f ? "+" : "") + juce::String (v, 1) + juce::String::fromUTF8 (" ¢");
+        }));
+    }
 
     return layout;
 }

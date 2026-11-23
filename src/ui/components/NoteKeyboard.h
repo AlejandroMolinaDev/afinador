@@ -14,7 +14,8 @@ namespace novapitch
     pitch passes) or Eliminar (redirected to the nearest valid note).
     Keys are coloured by the *effective* state after key, scale and overrides;
     the detected and target notes are highlighted live.
-    Click = next state, right click = choose. */
+    Click = next state, right click = choose state / detune, mouse wheel over a
+    key = detune ±1 cent (Shift: ±10) for microtonal scales. */
 class NoteKeyboard final : public juce::Component,
                            public juce::SettableTooltipClient
 {
@@ -29,6 +30,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     /** Key rectangle of a pitch class (local coordinates; for tests and hit testing). */
     juce::Rectangle<float> keyBounds (int pitchClass) const;
@@ -39,9 +41,17 @@ public:
     /** Effective state (1 Activa, 2 Ignorar, 3 Eliminar) after key/scale. */
     int getEffectiveState (int pitchClass) const;
 
+    /** Per-note detune in cents (parameters noteDetune0..11). */
+    void setDetune (int pitchClass, float cents);
+    float getDetune (int pitchClass) const;
+
 private:
     juce::AudioProcessorValueTreeState& state;
-    std::array<std::unique_ptr<juce::ParameterAttachment>, 12> noteAttachments;
+    void askExactDetune (int pitchClass);
+
+    std::array<std::unique_ptr<juce::ParameterAttachment>, 12> noteAttachments, detuneAttachments;
+    std::array<float, 12> detunes {};
+    std::unique_ptr<juce::AlertWindow> detuneDialog;
     std::unique_ptr<juce::ParameterAttachment> keyAttachment, scaleAttachment;
     std::array<int, 12> states {};
     int key = 0, scale = 0;

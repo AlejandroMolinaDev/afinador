@@ -74,7 +74,7 @@ El indicador **FL Studio** de la cabecera confirma que el plugin ha reconocido e
 | Zona | Qué hace |
 |---|---|
 | **Auto / Gráfico** | Cambia entre corrección automática y modo gráfico (§12). Es un parámetro automatizable (*Modo gráfico*). |
-| **Presets** `<` `>` · **Guardar** · `···` | Presets de fábrica y de usuario (§10); `···` abre opciones: color de acento, carpeta de presets, carpeta de capturas de audio, quitar asignaciones MIDI. |
+| **Presets** `<` `>` · **A / B** · **Guardar** · `···` | Presets de fábrica y de usuario (§10) y comparación A/B; «*» junto al nombre = ajustes cambiados. `···` abre opciones: color de acento, carpeta de presets, carpeta de capturas de audio, copiar A en B, quitar asignaciones MIDI. |
 | **Medidor** | Nota detectada, desviación en cents (¢), nota destino y corrección aplicada; barra de confianza de la detección. |
 | **Tonalidad / Escala** | Notas destino. 14 escalas (Mayor, menores, modos, pentatónicas, Blues, Cromática y Personalizada). Botones **Escuchar** y **Sincronizar** (§11). |
 | **Modo** | Live, Tracking, HQ o Vintage (§5). |
@@ -123,7 +123,9 @@ Un teclado de una octava con las 12 notas. Cada nota tiene un estado:
 - **Ignorar**: no se corrige; pasa la voz original (útil para una nota de paso o un adorno).
 - **Eliminar**: no es destino; se corrige a la nota válida más cercana.
 
-**Clic** en una tecla pasa al siguiente estado; **clic derecho** permite elegirlo. El color muestra el resultado real (acento = destino, amarillo = ignorar, gris = eliminada o fuera de escala). El **punto blanco** marca la nota que estás cantando y el **contorno** la nota a la que se corrige. **Restablecer** vuelve todas a «Escala»; **Todas activas** equivale a la escala cromática. Los estados también son parámetros automatizables (`Nota C`, `Nota C#`…) y **Aprender escala por MIDI** (§10) los rellena por ti.
+**Clic** en una tecla pasa al siguiente estado; **clic derecho** permite elegirlo o desafinar la nota. El color muestra el resultado real (acento = destino, amarillo = ignorar, gris = eliminada o fuera de escala). El **punto blanco** marca la nota que estás cantando y el **contorno** la nota a la que se corrige. **Restablecer** vuelve todas a «Escala»; **Todas activas** equivale a la escala cromática. Los estados también son parámetros automatizables (`Nota C`, `Nota C#`…) y **Aprender escala por MIDI** (§10) los rellena por ti.
+
+**Desafinación por nota** (escalas microtonales, entonación justa, cuartos de tono): cada nota puede corregirse hasta ±50 ¢ por encima o por debajo del temperamento igual. Gira la **rueda del ratón** sobre la tecla (±1 ¢; con Mayús ±10 ¢) o usa **clic derecho → Desafinación** (valores rápidos como −14 ¢ para una tercera mayor justa, −31 ¢ para una séptima armónica, ±50 ¢ para cuartos de tono, u *Otro valor…*). La tecla muestra el valor en amarillo. La desafinación también decide a qué nota se corrige, y la respetan las armonías, la nota objetivo MIDI, la importación del modo gráfico y **Sincronizar**. Como la tonalidad, pertenece a la canción: los presets y el A/B no la cambian.
 
 ---
 
@@ -173,7 +175,8 @@ Con eso funcionan: armonías en modo MIDI (acordes), **MIDI: nota objetivo** y *
 - **MIDI: nota objetivo**: la nota MIDI que mantienes (en la octava más cercana a la voz) es el destino de la corrección. Puedes cantar en cualquier octava. Con **Octava exacta**, se usa la nota en la octava que tocas (para forzar saltos de octava).
 - **Enviar notas MIDI**: NovaPitch envía como MIDI las notas corregidas que va cantando la voz (con su intensidad), para doblarla con un sintetizador o escribirlas en el Piano roll. En FL Studio: ventana del plugin → ⚙ → **MIDI** → **Output port** = un número libre; en el sintetizador, el mismo número como *Input port*.
 - **Aprender escala por MIDI**: mientras está activo, las notas que toques definen una escala personalizada (Escala = Personalizada). Desactívalo para conservarla.
-- **Presets**: los de fábrica (*Corrección natural, Pop moderno, Hard tune, Trap / urbano latino, Directo, Voz grave, Armonías 3as*) y los tuyos (**Guardar**, en `Documentos/NovaPitch/Presets`). Un preset cambia el sonido **pero nunca** la tonalidad, la escala, las notas, la referencia A4 ni el modo gráfico: puedes probar presets a mitad de canción sin perder la tonalidad.
+- **Comparación A/B**: los botones **A** y **B** de la cabecera guardan dos versiones del sonido; pulsa el otro para compararlas mientras suena la canción (la primera vez, B empieza como copia de A). `···` → *Copiar el sonido A en B* iguala ambas. Las dos se guardan con el proyecto y nunca cambian la tonalidad, la escala ni las notas.
+- **Presets**: los de fábrica (*Corrección natural, Pop moderno, Hard tune, Trap / urbano latino, Directo, Voz grave, Armonías 3as*) y los tuyos (**Guardar**, en `Documentos/NovaPitch/Presets`). Un preset cambia el sonido **pero nunca** la tonalidad, la escala, las notas (ni su desafinación), la referencia A4 ni el modo gráfico: puedes probar presets a mitad de canción sin perder la tonalidad. Si tocas un ajuste, el nombre muestra «*»; elegir el mismo preset otra vez descarta los cambios.
 - **MIDI Learn** (CLAP, AU y aplicación independiente): clic derecho en cualquier knob → *Asignar a controlador MIDI* y mueve un control de tu teclado. Las asignaciones se guardan en el proyecto.
 - **En VST3 dentro de FL Studio** usa *Link to controller* de FL (clic derecho en el knob dentro de FL o *Tools → Last tweaked → Link to controller*): FL no envía CC a los efectos VST3.
 
