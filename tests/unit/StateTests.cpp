@@ -3,6 +3,8 @@
 #include "TestHelpers.h"
 #include "plugin/Parameters.h"
 
+#include <algorithm>
+
 using namespace novapitch;
 using namespace novapitch::test;
 
@@ -53,4 +55,19 @@ TEST_CASE ("Older state versions are migrated to the current version", "[state]"
 
     p.setStateInformation (block.getData(), static_cast<int> (block.getSize()));
     CHECK (static_cast<int> (p.getValueTreeState().state.getProperty (kStateVersionProperty)) == kStateVersion);
+}
+
+#include <catch2/interfaces/catch_interfaces_registry_hub.hpp>
+#include <catch2/interfaces/catch_interfaces_testcase.hpp>
+#include <catch2/catch_test_case_info.hpp>
+
+TEST_CASE ("Test names are plain ASCII (CTest on Windows mangles other characters)", "[meta]")
+{
+    const auto& tests = Catch::getRegistryHub().getTestCaseRegistry().getAllTests();
+    for (const auto& handle : tests)
+    {
+        const auto& name = handle.getTestCaseInfo().name;
+        INFO (name);
+        CHECK (std::all_of (name.begin(), name.end(), [] (char c) { return static_cast<unsigned char> (c) < 128; }));
+    }
 }

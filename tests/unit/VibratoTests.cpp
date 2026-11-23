@@ -65,7 +65,7 @@ TEST_CASE ("Vibrato analyser measures rate and depth within 10 %", "[vibrato]")
     CHECK (s.maxCentreError < 0.2f * depth); // centre stays near the note
 }
 
-TEST_CASE ("Vibrato analyser on real audio through the pitch detector (5.5 Hz, ±50 c)", "[vibrato]")
+TEST_CASE ("Vibrato analyser on real audio through the pitch detector (5.5 Hz, +-50 c)", "[vibrato]")
 {
     const double sr = 48000.0;
     const auto audio = signals::vibratoSine (220.0, 5.5, 50.0, sr, 2.0);
