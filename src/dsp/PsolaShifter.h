@@ -12,7 +12,12 @@ namespace novapitch::dsp
     - Analysis: pitch marks (epochs) are placed one analysis period apart and
       snapped to the waveform peak of a low-passed mono signal (search window
       ±30 % of the period). In unvoiced parts epochs follow a fixed 5 ms grid.
-    - Synthesis: synthesis marks are spaced by period / ratio. Each mark takes
+    - Synthesis: synthesis marks are spaced by period / ratio, where period is
+      the detector's period — or, on note transitions (the measured spacing
+      of the snapped epochs differs from it by > 6 %), the measured spacing:
+      the detector reports a new note ~20 ms late, the waveform peaks do not,
+      so the output follows a sung note change at once (with the previous
+      correction ratio until the control catches up). Each mark takes
       the nearest known analysis epoch e <= s + latency and overlap-adds a
       Hann-windowed grain of ±1 analysis period (asymmetric when needed).
       Grains are not resampled, so formants are preserved.
@@ -74,12 +79,13 @@ private:
     };
 
     static constexpr int kMaxGrains = 32;
+    static constexpr float kTransitionThreshold = 0.06f; // ~1 semitone
     static constexpr int kMaxEpochs = 1024;
     static constexpr int kWindowTableSize = 1024;
 
     void trackEpochs (int64_t n) noexcept;
     void pushEpoch (int64_t pos, float period) noexcept;
-    bool findEpoch (int64_t s, int64_t maxPos, int64_t& epoch, float& period) const noexcept;
+    bool findEpoch (int64_t s, int64_t maxPos, int64_t& epoch, float& period, float* spacing = nullptr) const noexcept;
     void createGrains (int64_t x) noexcept;
     float rise (float u) const noexcept;
 
@@ -105,7 +111,8 @@ private:
 
     // Epochs (ring)
     std::array<int64_t, kMaxEpochs> epochPos {};
-    std::array<float, kMaxEpochs> epochPeriod {};
+    std::array<float, kMaxEpochs> epochPeriod {};   // detector period when the epoch was placed
+    std::array<float, kMaxEpochs> epochSpacing {};  // measured distance to the previous voiced epoch (0 = unknown)
     int epochWrite = 0, epochCount = 0;
     int64_t lastEpoch = 0;
     bool haveEpoch = false;

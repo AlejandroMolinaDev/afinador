@@ -84,7 +84,16 @@ public:
     /** Builds Note objects from the captured curve with the given mapper (key,
         scale, note states). Replaces the existing objects (one undo step).
         Returns the number of notes created. */
-    int importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds = 0.08);
+    int importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds = 0.08, double smoothSeconds = 0.04);
+
+    /** Builds Curve objects that follow the captured pitch exactly (one per
+        sung phrase, a point every 20 ms): nothing changes until they are
+        edited. Replaces the existing objects (one undo step). Returns the
+        number of curves created. */
+    int importAsCurves();
+
+    /** Running-median centre used to scale a curve's vibrato (exposed for tests). */
+    static std::vector<std::pair<double, float>> scaleCurveVibrato (const std::vector<std::pair<double, float>>& points, float keep);
 
     // Time edits (phase 9) -------------------------------------------------------
     /** Output time (host timeline) <-> source time (captured audio). Objects and the

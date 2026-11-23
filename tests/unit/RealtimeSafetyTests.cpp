@@ -70,12 +70,14 @@ TEST_CASE ("processBlock does not allocate in any mode", "[realtime]")
     for (int v = 1; v <= 4; ++v) // all four harmony voices, every mode
         setParam (p, ParamIDs::harmonyVoice ("hvMode", v), static_cast<float> (1 + (v % 3)));
     setParam (p, ParamIDs::midiTarget, 1.0f);
+    setParam (p, ParamIDs::midiOut, 1.0f);
     p.prepareToPlay (sr, 512);
 
     const auto sig = signals::concat ({ signals::sawtooth (233.0, sr, 0.6), signals::whiteNoise (sr, 0.2, 0.2f, 4u),
                                         signals::sawtooth (311.0, sr, 0.6) });
     juce::AudioBuffer<float> buffer (2, 512);
     juce::MidiBuffer midi;
+    midi.ensureSize (2048); // as every plugin wrapper does (VST3, AU, AAX)
     std::mt19937 rng (9u);
     std::uniform_int_distribution<int> sizes (1, 512);
 

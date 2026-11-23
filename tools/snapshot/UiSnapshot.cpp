@@ -122,7 +122,7 @@ int main (int argc, char* argv[])
         return nullptr;
     };
 
-    const std::pair<const char*, const char*> tabs[] = { { "Formantes", "formantes" }, { "Vibrato", "vibrato" },
+    const std::pair<const char*, const char*> tabs[] = { { "Notas", "notas" }, { "Formantes", "formantes" }, { "Vibrato", "vibrato" },
                                                          { "Armonías", "armonias" }, { "Bus", "bus" }, { "MIDI", "midi" } };
     for (const auto& [tab, slug] : tabs)
     {

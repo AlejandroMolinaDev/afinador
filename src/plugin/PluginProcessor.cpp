@@ -97,6 +97,9 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.busGate = get (ParamIDs::hBusGate);
     params.busWidth = get (ParamIDs::hBusWidth);
     params.graphMode = get (ParamIDs::graphMode);
+    params.midiOut = get (ParamIDs::midiOut);
+    params.midiTargetExact = get (ParamIDs::midiTargetExact);
+    params.vibShape = get (ParamIDs::vibShape);
 
     pitchDetector.setListener (this);
     presetManager = std::make_unique<PresetManager> (apvts);
@@ -204,6 +207,8 @@ void NovaPitchProcessor::reset()
     synthNote = -1;
     wasVoiced = false;
     outputGain = outputGainTarget = 1.0f;
+    midiOutNote = midiOutCandidate = -1;
+    numMidiOutEvents = 0;
 }
 
 void NovaPitchProcessor::timerCallback()
@@ -459,13 +464,26 @@ void NovaPitchProcessor::processGraphMessages()
     trackPublisher.collect (audioBlocksDone.load());
 }
 
-int NovaPitchProcessor::importGraphFromAuto()
+int NovaPitchProcessor::importGraphFromAuto (int detail)
 {
     dsp::NoteMapper mapper;
     mapper.setKeyAndScale (choiceIndex (params.key), dsp::scaleTypeFromIndex (choiceIndex (params.scale)));
     for (int pc = 0; pc < 12; ++pc)
         mapper.setNoteState (pc, dsp::noteStateFromIndex (choiceIndex (params.noteStates[static_cast<size_t> (pc)])));
-    return graphModel.importFromAuto (mapper);
+    // detail: 0 = fewer, longer notes; 1 = normal; 2 = more, shorter notes (fast runs, ornaments)
+    static constexpr double minNote[] = { 0.15, 0.08, 0.04 };
+    static constexpr double smooth[] = { 0.08, 0.04, 0.015 };
+    const auto d = static_cast<size_t> (juce::jlimit (0, 2, detail));
+    if (detail >= 2)
+        mapper.setHysteresis (0.08f);
+    else if (detail <= 0)
+        mapper.setHysteresis (0.25f);
+    return graphModel.importFromAuto (mapper, minNote[d], smooth[d]);
+}
+
+int NovaPitchProcessor::importGraphAsCurves()
+{
+    return graphModel.importAsCurves();
 }
 
 void NovaPitchProcessor::readPlayHead() noexcept
@@ -564,6 +582,7 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
     vs.variation = params.vibVariation->load (std::memory_order_relaxed) / 100.0f;
     vs.amplitudeMod = params.vibAmpMod->load (std::memory_order_relaxed) / 100.0f;
     vs.formantMod = params.vibFormantMod->load (std::memory_order_relaxed) / 100.0f;
+    vs.shape = choiceIndex (params.vibShape);
     vibratoSynth.setSettings (vs);
 
     // Formants: shift x character (x transposition when linked). With "preserve"
@@ -599,6 +618,8 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
 
     // MIDI + harmonies
     midiTargetOn = params.midiTarget->load (std::memory_order_relaxed) > 0.5f;
+    midiTargetExactOn = params.midiTargetExact->load (std::memory_order_relaxed) > 0.5f;
+    midiOutOn = params.midiOut->load (std::memory_order_relaxed) > 0.5f;
     for (int v = 0; v < dsp::HarmonyEngine::kVoices; ++v)
     {
         const auto& pv = params.voices[static_cast<size_t> (v)];
@@ -693,12 +714,14 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     }
     else if (voiced && midiTargetOn && numHeld > 0)
     {
-        // MIDI Target: the held note (any octave) closest to the sung pitch.
+        // MIDI Target: the held note closest to the sung pitch — in any octave, or
+        // exactly as played ("octava exacta", e.g. to force an octave jump).
         float best = 1.0e9f;
         for (int i = 0; i < numHeld; ++i)
         {
             const int h = held[static_cast<size_t> (i)];
-            const int candidate = h + 12 * static_cast<int> (std::lround ((centreMidi - static_cast<float> (h)) / 12.0f));
+            const int candidate = midiTargetExactOn ? h
+                                                    : h + 12 * static_cast<int> (std::lround ((centreMidi - static_cast<float> (h)) / 12.0f));
             if (std::abs (centreMidi - static_cast<float> (candidate)) < best)
             {
                 best = std::abs (centreMidi - static_cast<float> (candidate));
@@ -721,6 +744,37 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     wasVoiced = voiced;
     const auto synth = vibratoSynth.process (voiced, noteStarted);
     outputGainTarget = synth.gain;
+
+    // MIDI note output: the corrected note (target + transposition), or the
+    // nearest note when nothing is corrected. A change must last 2 frames
+    // (~5 ms) so detector flicker never produces stray notes.
+    if (midiOutOn)
+    {
+        const int wanted = ! voiced ? -1
+                                    : (target.hasTarget ? target.note + static_cast<int> (transposeSemitones)
+                                                        : static_cast<int> (std::lround (detectedMidi + transposeSemitones)));
+        if (wanted == midiOutCandidate)
+            ++midiOutCandidateFrames;
+        else
+        {
+            midiOutCandidate = wanted;
+            midiOutCandidateFrames = 1;
+        }
+        if (midiOutCandidate != midiOutNote && (midiOutCandidateFrames >= 2 || midiOutCandidate < 0))
+        {
+            const int offset = chunkOffsetInBlock + static_cast<int> (e.sampleIndex - chunkStartIndex);
+            if (midiOutNote >= 0)
+                queueMidiOut (offset, midiOutNote, 0);
+            if (midiOutCandidate >= 0 && midiOutCandidate <= 127)
+            {
+                const int velocity = juce::jlimit (1, 127, static_cast<int> (std::lround (20.0f + (e.rmsDb + 60.0f) * 107.0f / 60.0f)));
+                queueMidiOut (offset, midiOutCandidate, velocity);
+                midiOutNote = midiOutCandidate;
+            }
+            else
+                midiOutNote = -1;
+        }
+    }
 
     const float totalCents = correction + vibratoScale + synth.pitchCents + 100.0f * transposeSemitones;
     const float ratio = std::exp2 (totalCents / 1200.0f);
@@ -844,6 +898,7 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
         if (! bypassed)
         {
             chunkHostTime = blockHostTime + static_cast<double> (start) / inputSampleRate;
+            chunkOffsetInBlock = start;
             chunkStartIndex = pitchDetector.getInputSamplesSeen();
             pitchDetector.process (monoScratch.data(), n); // -> pitchFrameReady -> engine control
         }
@@ -939,19 +994,51 @@ void NovaPitchProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         else if (m.isAllNotesOff() || m.isAllSoundOff())
             midiNotes.allOff();
     }
+    midi.clear(); // the output carries only our own notes (no MIDI thru); keeps its storage
+
     updateDspFromParameters();
+    if (! midiOutOn && midiOutNote >= 0)
+        queueMidiOut (0, midiOutNote, 0); // switched off while a note was sounding
     runChain (buffer, false);
+    flushMidiOut (midi);
     audioBlocksDone.fetch_add (1);
 }
 
-void NovaPitchProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void NovaPitchProcessor::queueMidiOut (int offset, int note, int velocity) noexcept
+{
+    if (velocity == 0 && note == midiOutNote && ! midiOutOn)
+        midiOutNote = -1;
+    if (numMidiOutEvents < kMaxMidiOutEvents)
+        midiOutEvents[static_cast<size_t> (numMidiOutEvents++)] = { std::max (0, offset), note, velocity };
+}
+
+void NovaPitchProcessor::flushMidiOut (juce::MidiBuffer& midi) noexcept
+{
+    for (int i = 0; i < numMidiOutEvents; ++i)
+    {
+        const auto& ev = midiOutEvents[static_cast<size_t> (i)];
+        const auto msg = ev.velocity > 0 ? juce::MidiMessage::noteOn (1, ev.note, static_cast<juce::uint8> (ev.velocity))
+                                         : juce::MidiMessage::noteOff (1, ev.note);
+        midi.addEvent (msg, ev.offset); // the host's MIDI buffer is pre-sized; 3-byte events
+    }
+    numMidiOutEvents = 0;
+}
+
+void NovaPitchProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     if (buffer.getNumSamples() <= 0)
         return;
 
+    midi.clear();
+    if (midiOutNote >= 0) // bypass never leaves a hanging note
+    {
+        queueMidiOut (0, midiOutNote, 0);
+        midiOutNote = midiOutCandidate = -1;
+    }
     updateDspFromParameters();
     runChain (buffer, true);
+    flushMidiOut (midi);
     audioBlocksDone.fetch_add (1);
 }
 

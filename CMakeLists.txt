@@ -86,7 +86,7 @@ juce_add_plugin(NovaPitch
     FORMATS                     ${NOVAPITCH_FORMATS}
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            TRUE     # MIDI Target / scale learn / chord harmonies (phases 3-7)
-    NEEDS_MIDI_OUTPUT           FALSE
+    NEEDS_MIDI_OUTPUT           TRUE     # "MIDI: enviar notas": corrected notes out (feature audit)
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     VST3_CATEGORIES             Fx "Pitch Shift"
@@ -164,6 +164,8 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/LabeledControls.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/VibratoDisplay.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/VibratoDisplay.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/NoteKeyboard.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/NoteKeyboard.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/GraphEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/GraphEditor.h
 )

@@ -33,9 +33,9 @@ Estado por fases (ver especificación original, sección 11).
 
 ### Fase 3
 - [ ] Prueba de escucha con voz real en FL Studio (Windows y Mac) — `docs/TESTING_FL.md`, sección Fase 3. También se puede usar `tools/render` con tomas propias.
-- [ ] Compensar el retardo de detección (≈ media ventana + mediana) alineando el control con el audio en Tracking/HQ (hoy el control llega ~5–10 ms tarde: suaviza ligeramente los ataques con velocidad 0).
+- [x] Retardo de detección en los cambios de nota: el PSOLA sigue el periodo real de la onda en las transiciones (auditoría de funciones).
 - [ ] Modo Live: retardo extra de hasta ~1 periodo en partes con voz (documentado en DSP_NOTES); valorar ventanas asimétricas más cortas.
-- [ ] Teclado de 12 notas en la UI (estados Activa/Ignorar/Eliminar): los parámetros `noteState0..11` ya existen y son automatizables; el componente visual llega en la Fase 6.
+- [x] Teclado de 12 notas en la UI: pestaña Notas (auditoría de funciones).
 - [x] HQ (signalsmith-stretch) y Vintage reales (Fase 4).
 
 ### Fase 4
@@ -60,10 +60,10 @@ Estado por fases (ver especificación original, sección 11).
 - [x] Preset "Armonías 3as" (Fase 7).
 - [ ] Indicador de preset modificado ("*") y comparación A/B.
 - [ ] Archivo global de usuario para mapeos MIDI por defecto (opcional en la especificación; hoy se guardan en cada proyecto).
-- [ ] Teclado de 12 notas en la UI (estados Activa/Ignorar/Eliminar): los parámetros `noteState0..11` existen y son automatizables; falta el componente visual.
+- [x] Teclado de 12 notas en la UI: pestaña Notas (auditoría de funciones).
 - [ ] MIDI Learn en VST3 dentro de FL: FL no envía CC a efectos VST3 sin parámetros CC emulados (desactivados a propósito). Se documenta "Link to controller" de FL; en CLAP/AU/Standalone funciona directo.
 - [ ] Guardar el tamaño de la ventana del editor en el estado del plugin.
-- [ ] Color de acento configurable desde la UI (la infraestructura `NovaLookAndFeel::setAccent` ya existe).
+- [x] Color de acento configurable desde la UI (`···` → Color de acento).
 
 ### Fase 7
 - [ ] Prueba en FL: armonías por acordes desde el piano roll (canal MIDI Out → puerto del plugin), MIDI Target y aprender escala — `docs/TESTING_FL.md`, sección Fase 7.
@@ -95,6 +95,15 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] Limpieza de capturas huérfanas (proyectos borrados): hoy manual desde `···` → «Abrir carpeta de capturas de audio».
 - [ ] Corrección temporal más fina: anclas libres (no solo bordes de nota), arrastre de varias notas a la vez, ajuste a la rejilla del tempo.
 - [ ] El detector de tonalidad propone Mayor / Menor natural; otras escalas (modos, pentatónicas) se eligen a mano.
+
+### Auditoría de funciones (0.9.x) — `docs/AUDITORIA_FUNCIONES.md`
+- [x] Teclado de 12 notas en la UI (pestaña **Notas**): cierra los pendientes de las Fases 3 y 6.
+- [x] Cambios de nota inmediatos con velocidad 0 (antes la salida seguía ~20 ms en la nota anterior).
+- [x] Salida MIDI de las notas corregidas, octava exacta en la nota objetivo MIDI, forma del vibrato artificial.
+- [x] Modo gráfico: detalle de importación, importar como curvas, escalar el vibrato de una curva, mover con flechas.
+- [ ] Comparación A/B de ajustes e indicador de preset modificado (ver Fase 6).
+- [ ] Desafinación por nota (escalas microtonales), opcional.
+- [ ] Saltos de más de ~4 semitonos: la salida sigue el cambio cuando el detector lo confirma (~20 ms); ampliar la búsqueda de épocas sin crear errores de octava.
 
 ### Fase 10
 - [x] `docs/USER_GUIDE_es.md` completa (+ HTML autónomo con imágenes, `tools/docs/build_guide.py`, incluido en los instaladores).

@@ -7,6 +7,7 @@
 #include "ui/LookAndFeel.h"
 #include "ui/components/GraphEditor.h"
 #include "ui/components/LabeledControls.h"
+#include "ui/components/NoteKeyboard.h"
 #include "ui/components/PitchTrace.h"
 #include "ui/components/TuningMeter.h"
 #include "ui/components/VibratoDisplay.h"
@@ -48,8 +49,8 @@ private:
         PluginEditor& owner;
     };
 
-    enum class Page { Correction = 0, Formants = 1, Vibrato = 2, Harmony = 3, HarmonyBus = 4, Midi = 5 };
-    static constexpr int kNumPages = 6;
+    enum class Page { Correction = 0, Notes = 1, Formants = 2, Vibrato = 3, Harmony = 4, HarmonyBus = 5, Midi = 6 };
+    static constexpr int kNumPages = 7;
 
     void timerCallback() override;
     juce::String buildFooterText() const;
@@ -89,6 +90,7 @@ private:
     std::vector<std::unique_ptr<LabeledKnob>> formantKnobs;     // shift, character
     std::vector<std::unique_ptr<LabeledKnob>> vibratoKnobs;     // keep, rate, depth, delay, variation, amp, formant
     VibratoDisplay vibratoDisplay;
+    std::unique_ptr<NoteKeyboard> noteKeyboard; // 12-note states (spec 5.2)
 
     // Tabs: each page is a transparent container placed over the page panel.
     std::array<juce::TextButton, kNumPages> tabs;
@@ -108,7 +110,9 @@ private:
     void selectVoice (int);
     void updateVoiceVisibility();
     std::vector<std::unique_ptr<LabeledKnob>> busKnobs;
-    std::vector<std::unique_ptr<LabeledToggle>> midiToggles;
+    std::vector<std::unique_ptr<LabeledToggle>> midiToggles; // target, learn scale, exact octave, MIDI out
+    juce::ComboBox vibShapeBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> vibShapeAttachment;
     juce::String heldNotesText;
     Page currentPage = Page::Correction;
 

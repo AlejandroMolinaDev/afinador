@@ -391,14 +391,15 @@ void GraphModel::clearObjects()
         graph.removeChild (i, &undo);
 }
 
-int GraphModel::importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds)
+int GraphModel::importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds, double smoothSeconds)
 {
     undo.beginNewTransaction (juce::String::fromUTF8 ("Importar desde automático"));
     clearObjects();
 
-    // Centred moving average (+-40 ms of voiced frames) so vibrato and jitter
-    // don't split notes; the mapper's hysteresis does the rest.
-    constexpr double kSmooth = 0.04, kMaxGap = 0.05;
+    // Centred moving average (+-smoothSeconds of voiced frames) so vibrato and
+    // jitter don't split notes; the mapper's hysteresis does the rest.
+    const double kSmooth = std::max (0.0, smoothSeconds);
+    constexpr double kMaxGap = 0.05;
     const size_t n = captured.size();
     std::vector<float> smooth (n, -1.0f);
     for (size_t i = 0, lo = 0, hi = 0; i < n; ++i)
@@ -461,6 +462,58 @@ int GraphModel::importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds)
     return created;
 }
 
+int GraphModel::importAsCurves()
+{
+    undo.beginNewTransaction (juce::String::fromUTF8 ("Importar como curvas"));
+    clearObjects();
+
+    constexpr double kMaxGap = 0.05, kSpacing = 0.02, kMinLength = 0.06;
+    int created = 0;
+    std::vector<std::pair<double, float>> run;
+    auto flush = [&] {
+        if (run.size() >= 2 && run.back().first - run.front().first >= kMinLength)
+        {
+            addCurve (run);
+            ++created;
+        }
+        run.clear();
+    };
+    double last = -1.0e9;
+    for (const auto& f : captured)
+    {
+        if (f.midi < 0.0f || f.time - last > kMaxGap)
+            flush();
+        if (f.midi >= 0.0f && (run.empty() || f.time - run.back().first >= kSpacing - 1.0e-6))
+            run.emplace_back (f.time, f.midi);
+        if (f.midi >= 0.0f)
+            last = f.time;
+    }
+    flush();
+    return created;
+}
+
+std::vector<std::pair<double, float>> GraphModel::scaleCurveVibrato (const std::vector<std::pair<double, float>>& pts, float keep)
+{
+    // centre = running median over +-90 ms (removes a vibrato cycle, keeps glides)
+    std::vector<std::pair<double, float>> out (pts);
+    std::vector<float> window;
+    for (size_t i = 0, lo = 0, hi = 0; i < pts.size(); ++i)
+    {
+        while (pts[lo].first < pts[i].first - 0.09)
+            ++lo;
+        hi = std::max (hi, i);
+        while (hi + 1 < pts.size() && pts[hi + 1].first <= pts[i].first + 0.09)
+            ++hi;
+        window.clear();
+        for (size_t k = lo; k <= hi; ++k)
+            window.push_back (pts[k].second);
+        const auto mid = window.begin() + static_cast<long> (window.size() / 2);
+        std::nth_element (window.begin(), mid, window.end());
+        out[i].second = *mid + keep * (pts[i].second - *mid);
+    }
+    return out;
+}
+
 //==============================================================================
 std::unique_ptr<dsp::CorrectionTrack> GraphModel::compile() const
 {
@@ -495,6 +548,8 @@ std::unique_ptr<dsp::CorrectionTrack> GraphModel::compile() const
             auto pts = readPoints (t);
             if (pts.size() < 2)
                 continue;
+            if (const float keep = getF (t, kVibrato, -1.0f); keep >= 0.0f && std::abs (keep - 1.0f) > 1.0e-4f)
+                pts = scaleCurveVibrato (pts, keep); // 0 = flat, 1 = as drawn, 2 = double
             for (auto& p : pts)
                 p.first = map.toOutput (p.first);
             s.kind = dsp::CorrectionTrack::Kind::Curve;

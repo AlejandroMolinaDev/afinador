@@ -68,12 +68,31 @@ VibratoSynth::Output VibratoSynth::process (bool voiced, bool noteStarted) noexc
 
     if (noteTime > delay)
         phase = std::fmod (phase + 2.0 * std::numbers::pi * rate * dt, 2.0 * std::numbers::pi);
-    const auto s = static_cast<float> (std::sin (phase));
+    const float s = shapeValue (settings.shape, phase);
 
     out.pitchCents = depthNow * env * s;
     out.gain = 1.0f + kMaxAmplitudeMod * am * env * s;
     out.formantFactor = std::exp2 (std::clamp (settings.formantMod, 0.0f, 1.0f) * out.pitchCents / 1200.0f);
     return out;
+}
+
+float VibratoSynth::shapeValue (int shape, double ph) noexcept
+{
+    constexpr double pi = std::numbers::pi;
+    switch (shape)
+    {
+        case 1: // triangle, starting at 0 and rising (no jump at the onset)
+            return static_cast<float> ((2.0 / pi) * std::asin (std::sin (ph)));
+        case 2: // square, softened so the pitch steps don't click
+            return static_cast<float> (std::tanh (5.0 * std::sin (ph)) / std::tanh (5.0));
+        case 3: // sawtooth: rises over 96 % of the cycle, falls back over the last 4 % (no click)
+        {
+            const double u = std::fmod (ph / (2.0 * pi) + 0.48, 1.0); // phase 0 -> value 0
+            return static_cast<float> (u < 0.96 ? -1.0 + 2.0 * u / 0.96 : 1.0 - 2.0 * (u - 0.96) / 0.04);
+        }
+        default:
+            return static_cast<float> (std::sin (ph));
+    }
 }
 
 } // namespace novapitch::dsp

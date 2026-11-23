@@ -372,6 +372,39 @@ detected pitch while the host plays and indexes it by the host timeline.
 - CPU (Linux container, 128-sample blocks, 200 notes, capture on): 1.8 % / 1.9 % / 2.4 % at
   44.1 / 48 / 96 kHz — the same as Tracking alone.
 
+## Feature audit (0.9.x) — note transitions, MIDI out, vibrato shapes
+
+### Hard-tune note transitions (PSOLA)
+- Measured before: with speed 0 and an abrupt A3 → C4 step, the output kept singing A3 for 17 ms (Tracking)
+  and 24 ms (Live, Vintage) after the step (+latency). Cause: synthesis marks were spaced by the
+  *detector's* period, which reports the new note ~27 ms after it starts (window centre + median + hop),
+  while the analysis epochs (peak-snapped on the waveform) already followed the new period.
+- Now each grain also knows the measured spacing of its epoch (mean of the spacings on both sides). When
+  it differs from the detector's period by more than 6 % (~1 semitone) — i.e. on note changes, never on
+  vibrato (≤ ~4 % even at ±100 c with the detector lag) — the synthesis uses the measured spacing. The
+  previous correction ratio applies to the new note until the detector confirms it.
+- After: within 60 c of the new note 0–6 ms after the step (Tracking at once; Live/Vintage 6 ms); exact
+  (15 c) at once when the intonation error is the same before and after, 18–25 ms when it differs by
+  50 c. Regression test: `TransitionTests` (3 modes × 2 intonation cases).
+- Limit: steps larger than ~4 semitones fall outside the ±30 % epoch search and are followed when the
+  detector catches up (as before).
+
+### MIDI note output
+- `midiOut` (append): the corrected note (target + transposition; nearest note when nothing is corrected)
+  is sent as MIDI note on/off with velocity from the input level; a change must last 2 analysis frames
+  (~5 ms). Events are queued on the audio thread in a fixed array and written at the end of the block
+  (plugin wrappers pre-size their MIDI buffer: 0 allocations). The output never echoes the input MIDI.
+  Bypass and switching it off send the pending note off. The plugin now declares MIDI output
+  (`NEEDS_MIDI_OUTPUT TRUE`): VST3 event output bus, CLAP note output port, AU MIDI output.
+
+### Other additions
+- `midiTargetExact`: MIDI Target uses the held note in its own octave (no octave folding).
+- `vibShape`: sine, triangle, softened square (tanh 5·sin) and sawtooth (rise over 96 % of the cycle, fall
+  over 4 %: no click); all start at 0 at the note onset.
+- Graph import: detail levels (min note 150/80/40 ms, smoothing ±80/40/15 ms, mapper hysteresis 0.25/
+  0.15/0.08 st), import as curves (one curve per phrase, a point every 20 ms, pitch followed exactly),
+  curve vibrato scaling at compile time around a ±90 ms running median (non-destructive, undoable).
+
 ## Phase 9 — key detection, instance sync, time correction
 
 ### KeyDetector (`dsp/KeyDetector.h`)

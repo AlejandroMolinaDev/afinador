@@ -61,7 +61,7 @@ juce::File PresetManager::defaultUserFolder()
 bool PresetManager::isSongParameter (const juce::String& id)
 {
     return id == ParamIDs::key || id == ParamIDs::scale || id == ParamIDs::referenceA4 || id.startsWith ("noteState")
-           || id == ParamIDs::graphMode;
+           || id == ParamIDs::graphMode || id == ParamIDs::midiOut;
 }
 
 std::vector<PresetManager::Preset> PresetManager::getPresets() const

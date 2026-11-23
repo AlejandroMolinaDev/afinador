@@ -79,7 +79,7 @@ El indicador **FL Studio** de la cabecera confirma que el plugin ha reconocido e
 | **Tonalidad / Escala** | Notas destino. 14 escalas (Mayor, menores, modos, pentatónicas, Blues, Cromática y Personalizada). Botones **Escuchar** y **Sincronizar** (§11). |
 | **Modo** | Live, Tracking, HQ o Vintage (§5). |
 | **Perfil de entrada** | Rango en el que se busca la nota (§6). |
-| **Pestañas** | Corrección, Formantes, Vibrato, Armonías, Bus, MIDI. |
+| **Pestañas** | Corrección, Notas, Formantes, Vibrato, Armonías, Bus, MIDI. |
 | **Gráfico inferior** | Últimos 5 s: afinación de entrada y corregida. |
 | **Pie** | Versión, formato, host, frecuencia de muestreo, bloques, canales, latencia y mensajes de estado. |
 
@@ -114,7 +114,16 @@ Al cambiar de modo cambia la latencia; FL la compensa automáticamente. Para can
 
 **Perfil de entrada**: *Soprano* (150–1200 Hz), *Alto / Tenor* (80–900 Hz, por defecto), *Voz grave masculina* (60–500 Hz), *Instrumento* (50–2000 Hz), *Instrumento grave* (30–400 Hz). Un perfil ajustado a la voz evita errores de octava.
 
-**Notas de la escala**: cada una de las 12 notas tiene un estado: *Escala* (por defecto: sigue a la escala elegida), *Activa* (destino válido aunque no esté en la escala), *Ignorar* (no se corrige, pasa la voz original) o *Eliminar* (se redirige a la nota válida más cercana). Por ahora se ajustan como parámetros del plugin desde FL (`Nota C`, `Nota C#`…, automatizables); **Aprender escala por MIDI** (§10) los rellena por ti.
+### Pestaña Notas
+![Pestaña Notas](img/notas.png)
+
+Un teclado de una octava con las 12 notas. Cada nota tiene un estado:
+- **Escala** (por defecto): sigue a la tonalidad y la escala elegidas.
+- **Activa**: destino válido aunque no esté en la escala.
+- **Ignorar**: no se corrige; pasa la voz original (útil para una nota de paso o un adorno).
+- **Eliminar**: no es destino; se corrige a la nota válida más cercana.
+
+**Clic** en una tecla pasa al siguiente estado; **clic derecho** permite elegirlo. El color muestra el resultado real (acento = destino, amarillo = ignorar, gris = eliminada o fuera de escala). El **punto blanco** marca la nota que estás cantando y el **contorno** la nota a la que se corrige. **Restablecer** vuelve todas a «Escala»; **Todas activas** equivale a la escala cromática. Los estados también son parámetros automatizables (`Nota C`, `Nota C#`…) y **Aprender escala por MIDI** (§10) los rellena por ti.
 
 ---
 
@@ -134,7 +143,7 @@ En modo Vintage los formantes siguen a la nota (efecto clásico).
 ## 8. Vibrato
 
 - **Conservar** (0–200 %): la corrección actúa sobre el centro de la nota y el vibrato natural se mantiene (100 %), se elimina (0 %) o se exagera (200 %). NovaPitch necesita ~0,6 s de nota para reconocer el vibrato.
-- **Vibrato artificial**: **Velocidad** (0,1–10 Hz), **Profundidad** (cents; 0 = apagado), **Retardo** (desde el inicio de cada nota), **Variación** (menos mecánico), **Amplitud** (modulación de volumen) y **Formante** (cuánto sigue el timbre al vibrato).
+- **Vibrato artificial**: **Forma** (seno, triángulo, cuadrada o sierra), **Velocidad** (0,1–10 Hz), **Profundidad** (cents; 0 = apagado), **Retardo** (desde el inicio de cada nota), **Variación** (menos mecánico), **Amplitud** (modulación de volumen) y **Formante** (cuánto sigue el timbre al vibrato).
 
 El visualizador muestra la velocidad y profundidad detectadas y la oscilación en vivo.
 
@@ -161,7 +170,8 @@ Con eso funcionan: armonías en modo MIDI (acordes), **MIDI: nota objetivo** y *
 
 ## 10. MIDI, presets y MIDI Learn
 
-- **MIDI: nota objetivo**: la nota MIDI que mantienes (en la octava más cercana a la voz) es el destino de la corrección. Puedes cantar en cualquier octava.
+- **MIDI: nota objetivo**: la nota MIDI que mantienes (en la octava más cercana a la voz) es el destino de la corrección. Puedes cantar en cualquier octava. Con **Octava exacta**, se usa la nota en la octava que tocas (para forzar saltos de octava).
+- **Enviar notas MIDI**: NovaPitch envía como MIDI las notas corregidas que va cantando la voz (con su intensidad), para doblarla con un sintetizador o escribirlas en el Piano roll. En FL Studio: ventana del plugin → ⚙ → **MIDI** → **Output port** = un número libre; en el sintetizador, el mismo número como *Input port*.
 - **Aprender escala por MIDI**: mientras está activo, las notas que toques definen una escala personalizada (Escala = Personalizada). Desactívalo para conservarla.
 - **Presets**: los de fábrica (*Corrección natural, Pop moderno, Hard tune, Trap / urbano latino, Directo, Voz grave, Armonías 3as*) y los tuyos (**Guardar**, en `Documentos/NovaPitch/Presets`). Un preset cambia el sonido **pero nunca** la tonalidad, la escala, las notas, la referencia A4 ni el modo gráfico: puedes probar presets a mitad de canción sin perder la tonalidad.
 - **MIDI Learn** (CLAP, AU y aplicación independiente): clic derecho en cualquier knob → *Asignar a controlador MIDI* y mueve un control de tu teclado. Las asignaciones se guardan en el proyecto.
@@ -187,7 +197,11 @@ FL Studio no admite ARA, así que NovaPitch trabaja por **captura por reproducci
 ### 12.1 Flujo de trabajo
 1. Pulsa **Gráfico** en la cabecera.
 2. Pulsa **● Capturar** y reproduce la canción (o el tramo) en FL. La curva de afinación se dibuja en rojo y queda en gris al parar. Volver a capturar un tramo sustituye solo ese tramo.
-3. Pulsa **Importar desde automático**: crea notas con la tonalidad y escala actuales (se puede deshacer).
+3. Pulsa **Importar desde automático** y elige:
+   - **Notas** con detalle *normal*, *más detalle* (pasajes rápidos y adornos) o *menos detalle* (notas largas), según la tonalidad y la escala actuales.
+   - **Curvas**: curvas que siguen exactamente la afinación capturada; no cambian nada hasta que las editas (mover, redibujar o escalar su vibrato).
+
+   Todo se puede deshacer.
 4. Edita (§12.2). La **curva corregida** (color de acento) muestra el resultado previsto sobre la original (gris).
 5. Reproduce: la voz sigue lo dibujado. **Fuera de los objetos, o con el transporte parado, pasa la voz original.**
 
@@ -211,7 +225,7 @@ Todo se guarda con el proyecto de FL.
 - Rueda: tono · Mayús + rueda: tiempo · Ctrl/Cmd + rueda: zoom de tiempo · Alt + rueda: zoom de tono · pinza en trackpad: zoom.
 
 ### 12.3 Ajustes por nota (inspector)
-Con notas seleccionadas, la barra inferior ajusta solo esas notas: **Velocidad**, **Vibrato** (conservado) y **Formante**. «Global» usa el valor de las pestañas. Un punto amarillo marca las notas con ajustes propios. Las líneas y curvas se siguen exactamente (sin suavizado ni vibrato).
+Con notas seleccionadas, la barra inferior ajusta solo esas notas: **Velocidad**, **Vibrato** (conservado) y **Formante**. Con curvas seleccionadas, **Vibrato** escala la oscilación de la propia curva (0 % la aplana, 200 % la duplica). «Global» usa el valor de las pestañas. Un punto amarillo marca las notas con ajustes propios. Las líneas y curvas se siguen exactamente (sin suavizado ni vibrato).
 
 ### 12.4 Corrección temporal (herramienta Tiempo)
 - Arrastra el **cuerpo** de una nota para mover la sílaba en el tiempo; arrastra un **borde** para estirarla o comprimirla. Las notas vecinas se ajustan para que no queden huecos ni solapes.
@@ -224,7 +238,7 @@ Con notas seleccionadas, la barra inferior ajusta solo esas notas: **Velocidad**
 El parámetro **Modo gráfico** se puede automatizar: por ejemplo, gráfico en las estrofas editadas a mano y automático en el resto.
 
 ### 12.6 Atajos de teclado
-Supr / Retroceso: borrar · Ctrl/Cmd + Z: deshacer · Ctrl/Cmd + Mayús + Z o Ctrl + Y: rehacer · Ctrl/Cmd + A: seleccionar todo · Esc: quitar selección · 1–7: herramientas. Haz clic en el gráfico antes para que la ventana del plugin tenga el foco del teclado (si FL se queda alguna tecla, usa los botones).
+Supr / Retroceso: borrar · Ctrl/Cmd + Z: deshacer · Ctrl/Cmd + Mayús + Z o Ctrl + Y: rehacer · Ctrl/Cmd + A: seleccionar todo · Esc: quitar selección · 1–7: herramientas · Flechas ↑ ↓: ±1 semitono (Mayús: ±10 ¢) · Flechas ← →: ±10 ms (Mayús: ±100 ms). Haz clic en el gráfico antes para que la ventana del plugin tenga el foco del teclado (si FL se queda alguna tecla, usa los botones).
 
 ### 12.7 Dónde se guarda el audio capturado
 Para no inflar el proyecto de FL, el audio capturado se guarda en tu carpeta de usuario (`···` → *Abrir carpeta de capturas de audio*):
@@ -241,7 +255,7 @@ El proyecto guarda la curva de afinación, los objetos y la referencia a esas ca
 - Usa **Tracking** para grabar y **HQ** solo al mezclar o exportar.
 - Coloca NovaPitch **antes** de compresores fuertes, reverbs y delays, y limpia la voz de ruido si la detección duda.
 - Si la nota detectada salta de octava, ajusta el **Perfil de entrada**.
-- Para el efecto robótico: preset **Hard tune** (o Velocidad 0, Tolerancia 0, Conservar vibrato 0 %), o modo **Vintage**.
+- Para el efecto robótico: preset **Hard tune** (o Velocidad 0, Tolerancia 0, Conservar vibrato 0 %), o modo **Vintage**. Los cambios de nota son inmediatos: la salida salta a la nota nueva en cuanto la cantas.
 
 ---
 

@@ -56,6 +56,9 @@ inline constexpr const char* hBusRelease = "hBusRelease";
 inline constexpr const char* hBusGate = "hBusGate";
 inline constexpr const char* hBusWidth = "hBusWidth";
 inline constexpr const char* graphMode = "graphMode";           // phase 8
+inline constexpr const char* midiOut = "midiOut";               // feature audit (0.9.x)
+inline constexpr const char* midiTargetExact = "midiTargetExact";
+inline constexpr const char* vibShape = "vibShape";
 
 /** Harmony voice parameters, voice = 1..4: "hvMode1", "hvDegrees1", ... */
 juce::String harmonyVoice (const char* field, int voice);

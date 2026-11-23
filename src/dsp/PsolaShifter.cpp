@@ -101,8 +101,17 @@ float PsolaShifter::rise (float u) const noexcept
 //==============================================================================
 void PsolaShifter::pushEpoch (int64_t pos, float p) noexcept
 {
+    // Measured spacing: only between consecutive voiced epochs of plausible distance.
+    float spacing = 0.0f;
+    if (haveEpoch && voiced)
+    {
+        const auto d = static_cast<float> (pos - lastEpoch);
+        if (d > 0.5f * p && d < 1.5f * p)
+            spacing = d;
+    }
     epochPos[static_cast<size_t> (epochWrite)] = pos;
     epochPeriod[static_cast<size_t> (epochWrite)] = p;
+    epochSpacing[static_cast<size_t> (epochWrite)] = spacing;
     epochWrite = (epochWrite + 1) % kMaxEpochs;
     epochCount = std::min (epochCount + 1, kMaxEpochs);
     lastEpoch = pos;
@@ -147,7 +156,7 @@ void PsolaShifter::trackEpochs (int64_t n) noexcept
     pushEpoch (best, T);
 }
 
-bool PsolaShifter::findEpoch (int64_t s, int64_t maxPos, int64_t& epoch, float& p) const noexcept
+bool PsolaShifter::findEpoch (int64_t s, int64_t maxPos, int64_t& epoch, float& p, float* spacing) const noexcept
 {
     bool found = false;
     int64_t bestDist = 0;
@@ -164,6 +173,15 @@ bool PsolaShifter::findEpoch (int64_t s, int64_t maxPos, int64_t& epoch, float& 
             bestDist = d;
             epoch = pos;
             p = epochPeriod[static_cast<size_t> (idx)];
+            if (spacing != nullptr)
+            {
+                // Average of this epoch's spacing and the next one (when known): less jitter.
+                float sp = epochSpacing[static_cast<size_t> (idx)];
+                const int next = (idx + 1) % kMaxEpochs;
+                if (i > 0 && epochSpacing[static_cast<size_t> (next)] > 0.0f && sp > 0.0f)
+                    sp = 0.5f * (sp + epochSpacing[static_cast<size_t> (next)]);
+                *spacing = sp;
+            }
         }
         if (pos < s - static_cast<int64_t> (3.0f * maxPeriod))
             break;
@@ -189,11 +207,12 @@ void PsolaShifter::createGrains (int64_t x) noexcept
 
         int64_t e = g.s;
         float p = static_cast<float> (unvoicedPeriod);
+        float measured = 0.0f;
         // With formants raised (fr > 1) a grain reads further ahead of its mark:
         // keep every source sample inside what has already arrived.
         const float scaledPeriod = (voiced ? period : 0.0f) * grainScale;
         const auto ahead = static_cast<int64_t> (std::ceil (std::max (0.0f, scaledPeriod - scaledPeriod / formantFactor)));
-        if (voiced && findEpoch (g.s, g.s + latency - ahead, e, p))
+        if (voiced && findEpoch (g.s, g.s + latency - ahead, e, p, &measured))
         {
             // The grain spans ±(grainScale · period) of the source; resampled by fr it
             // spans ±(grainScale · period / fr) of the output.
@@ -213,7 +232,11 @@ void PsolaShifter::createGrains (int64_t x) noexcept
 
         grains[static_cast<size_t> (numGrains++)] = g;
 
-        const double step = voiced ? static_cast<double> (period) / ratio : static_cast<double> (unvoicedPeriod);
+        // Note transitions: the waveform's own period leads the detector by ~20 ms.
+        float synthSource = period;
+        if (voiced && measured > 0.0f && std::abs (measured - period) > kTransitionThreshold * period)
+            synthSource = measured;
+        const double step = voiced ? static_cast<double> (synthSource) / ratio : static_cast<double> (unvoicedPeriod);
         nextSynth += std::max (2.0, step);
     }
 }

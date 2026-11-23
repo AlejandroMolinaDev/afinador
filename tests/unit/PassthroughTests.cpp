@@ -120,7 +120,7 @@ TEST_CASE ("Default layout is stereo in / stereo out (FL Studio mixer insert)", 
     CHECK (p.getTotalNumInputChannels() == 2);
     CHECK (p.getTotalNumOutputChannels() == 2);
     CHECK (p.acceptsMidi());
-    CHECK_FALSE (p.producesMidi());
+    CHECK (p.producesMidi()); // "MIDI: enviar notas" (off by default: the output stays empty)
 }
 
 TEST_CASE ("Re-preparing at a new sample rate keeps working", "[robustness]")

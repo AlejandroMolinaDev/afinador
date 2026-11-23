@@ -199,5 +199,18 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 101 | Desinstalar: desaparecen los plugins; presets y capturas del usuario se conservan | | |
 | 102 | macOS sin firma: el aviso de Gatekeeper se salta con clic derecho → Abrir | | |
 
+## Auditoría de funciones (0.9.x)
+
+> Automático en CI: cambios de nota con velocidad 0 en Live/Tracking/Vintage, salida MIDI (notas, note off, sin eco de la entrada), octava exacta, formas de vibrato, importación con detalle y como curvas, vibrato de curvas, 0 asignaciones con la salida MIDI activa.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 103 | Pestaña **Notas**: clic cambia el estado; la nota que cantas (punto) y la de destino (contorno) se ven en vivo; *Ignorar* deja pasar esa nota sin corregir | | |
+| 104 | Hard tune (Velocidad 0) en una melodía rápida: los cambios de nota suenan inmediatos, sin «arrastre» de la nota anterior | | |
+| 105 | **Enviar notas MIDI**: ⚙ → MIDI → Output port = 2; un sintetizador con Input port 2 dobla la voz con las notas corregidas | | |
+| 106 | **Octava exacta**: con nota objetivo MIDI una octava arriba, la voz salta a esa octava | | |
+| 107 | Forma del vibrato (seno, triángulo, cuadrada, sierra) se oye distinta y sin clics | | |
+| 108 | Modo gráfico: *Importar → Notas más detalle* en un pasaje rápido; *Importar → Curvas* y escalar su vibrato al 0 % y al 200 %; mover con flechas | | |
+
 ## Notas / incidencias encontradas
 - 

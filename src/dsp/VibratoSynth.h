@@ -7,8 +7,8 @@ namespace novapitch::dsp
 
 /** Artificial vibrato for sustained notes (runs at the analysis frame rate).
 
-    After `delay` since the note started it fades in over 250 ms a sinusoidal
-    pitch modulation (rate, depth in cents), with optional random variation of
+    After `delay` since the note started it fades in over 250 ms a periodic
+    (sine, triangle, softened square or sawtooth) pitch modulation (rate, depth in cents), with optional random variation of
     rate/depth (smoothed random walks), amplitude modulation and formant
     modulation in sync with the pitch. Each new note restarts the delay and
     the phase (starting at a zero crossing: no jump). Real-time safe. */
@@ -23,7 +23,11 @@ public:
         float variation = 0.2f;    // 0..1
         float amplitudeMod = 0.0f; // 0..1 (1 = ±25 % gain)
         float formantMod = 0.0f;   // 0..1 (1 = formants follow the vibrato fully)
+        int shape = 0;             // 0 sine, 1 triangle, 2 square (softened), 3 sawtooth (rising). Stored: append only
     };
+
+    /** Waveform value (-1..1) of a vibrato shape at phase 0..2pi (exposed for tests). */
+    static float shapeValue (int shape, double phase) noexcept;
 
     struct Output
     {

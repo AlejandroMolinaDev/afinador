@@ -95,7 +95,7 @@ public:
     //==========================================================================
     const juce::String getName() const override { return "NovaPitch"; }
     bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
+    bool producesMidi() const override { return true; } // "MIDI: enviar notas" (corrected notes out)
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
@@ -147,7 +147,9 @@ public:
     bool isHostPlaying() const noexcept { return hostPlaying.load (std::memory_order_relaxed); }
     /** Replaces the graph objects with notes from the captured curve, using the
         current key / scale / note states (one undo step). Returns notes created. */
-    int importGraphFromAuto();
+    int importGraphFromAuto (int detail = 1);
+    /** Replaces the graph objects with curves that follow the captured pitch (editable). */
+    int importGraphAsCurves();
     //==========================================================================
     // Key detection (phase 9): f0 chromagram + Krumhansl–Schmuckler profiles.
     /** Starts listening to the input for `voicedSeconds` of sung material (message thread). */
@@ -227,6 +229,9 @@ private:
         std::atomic<float>* vibAmpMod = nullptr;
         std::atomic<float>* vibFormantMod = nullptr;
         std::atomic<float>* graphMode = nullptr;
+        std::atomic<float>* midiOut = nullptr;
+        std::atomic<float>* midiTargetExact = nullptr;
+        std::atomic<float>* vibShape = nullptr;
     };
 
     /** Reads all parameters and pushes them into the DSP objects (audio thread). */
@@ -260,6 +265,25 @@ private:
     dsp::HarmonyEngine harmony;
     dsp::MidiNoteState midiNotes;
     bool midiTargetOn = false;
+    bool midiTargetExactOn = false;
+
+    // MIDI note output (audio thread): notes collected by the frame callback,
+    // written to the host's buffer at the end of the block.
+    struct MidiOutEvent
+    {
+        int offset;
+        int note;
+        int velocity; // 0 = note off
+    };
+    static constexpr int kMaxMidiOutEvents = 64;
+    void queueMidiOut (int offset, int note, int velocity) noexcept;
+    void flushMidiOut (juce::MidiBuffer&) noexcept;
+    std::array<MidiOutEvent, kMaxMidiOutEvents> midiOutEvents {};
+    int numMidiOutEvents = 0;
+    int midiOutNote = -1;
+    int midiOutCandidate = -1, midiOutCandidateFrames = 0;
+    bool midiOutOn = false;
+    int chunkOffsetInBlock = 0;
     bool wasLearningScale = false; // message thread
     uint16_t appliedLearnedMask = 0; // message thread
     std::array<int, kNumQualityModes> modeLatency {};

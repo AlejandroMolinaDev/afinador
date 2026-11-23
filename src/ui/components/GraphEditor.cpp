@@ -1068,9 +1068,23 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
             repaint();
             return;
         }
-        processor.importGraphFromAuto();
-        roll->selection.clear();
-        roll->fitAll();
+        juce::PopupMenu menu;
+        menu.addSectionHeader (u8 ("Crear objetos desde la captura (se puede deshacer)"));
+        menu.addItem (2, u8 ("Notas — detalle normal"));
+        menu.addItem (3, u8 ("Notas — más detalle (pasajes rápidos, adornos)"));
+        menu.addItem (1, u8 ("Notas — menos detalle (notas largas)"));
+        menu.addSeparator();
+        menu.addItem (4, u8 ("Curvas — siguen la afinación capturada (para editar la forma)"));
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (importButton), [this] (int result) {
+            if (result >= 1 && result <= 3)
+                processor.importGraphFromAuto (result - 1);
+            else if (result == 4)
+                processor.importGraphAsCurves();
+            else
+                return;
+            roll->selection.clear();
+            roll->fitAll();
+        });
     };
     clearButton.setButtonText (u8 ("Limpiar…"));
     clearButton.setTooltip (u8 ("Borrar objetos y/o la curva capturada."));
@@ -1123,7 +1137,7 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
                  "Velocidad de corrección de las notas seleccionadas. «Global» usa la Velocidad de la pestaña Corrección.");
     setupSlider (vibratoSlider, -1.0, 200.0, 1.0, GraphIds::vibratoKeep,
                  [] (double v) { return v < 0.0 ? u8 ("Global") : juce::String (juce::roundToInt (v)) + " %"; },
-                 "Vibrato conservado en las notas seleccionadas (0 % lo elimina, 200 % lo exagera). «Global» usa Conservar vibrato.");
+                 "Vibrato conservado en las notas o curvas seleccionadas (0 % lo elimina, 200 % lo exagera). «Global» usa Conservar vibrato (en las curvas, la forma dibujada).");
     setupSlider (formantSlider, -12.0, 12.0, 0.1, GraphIds::formantSt,
                  [] (double v) { return (v > 0.05 ? "+" : "") + juce::String (v, 1) + " st"; },
                  "Desplazamiento de formantes adicional en las notas seleccionadas.");
@@ -1161,18 +1175,21 @@ void GraphEditor::updateButtons()
 void GraphEditor::updateInspector()
 {
     const juce::ScopedValueSetter<bool> guard (updatingInspector, true);
-    juce::ValueTree first;
+    juce::ValueTree first, firstCurve;
     for (const auto& o : roll->selectedObjects())
-        if (o.hasType (GraphIds::note))
-        {
+    {
+        if (o.hasType (GraphIds::note) && ! first.isValid())
             first = o;
-            break;
-        }
+        if (o.hasType (GraphIds::curve) && ! firstCurve.isValid())
+            firstCurve = o;
+    }
     const bool any = first.isValid();
-    for (auto* s : { &retuneSlider, &vibratoSlider, &formantSlider })
-        s->setEnabled (any);
+    retuneSlider.setEnabled (any);
+    formantSlider.setEnabled (any);
+    vibratoSlider.setEnabled (any || firstCurve.isValid()); // curves: scales their own vibrato
     retuneSlider.setValue (any ? getF (first, GraphIds::retuneMs, -1.0f) : -1.0, juce::dontSendNotification);
-    const float vib = any ? getF (first, GraphIds::vibratoKeep, -1.0f) : -1.0f;
+    const auto& vibSource = any ? first : firstCurve;
+    const float vib = vibSource.isValid() ? getF (vibSource, GraphIds::vibratoKeep, -1.0f) : -1.0f;
     vibratoSlider.setValue (vib < 0.0f ? -1.0 : vib * 100.0, juce::dontSendNotification);
     formantSlider.setValue (any ? getF (first, GraphIds::formantSt) : 0.0, juce::dontSendNotification);
     updateButtons();
@@ -1184,7 +1201,7 @@ void GraphEditor::applyInspector (const juce::Identifier& property, double value
     if (property == GraphIds::vibratoKeep)
         stored = value < 0.0 ? -1.0f : static_cast<float> (value / 100.0);
     for (auto& o : roll->selectedObjects())
-        if (o.hasType (GraphIds::note))
+        if (o.hasType (GraphIds::note) || (o.hasType (GraphIds::curve) && property == GraphIds::vibratoKeep))
             model.setObjectProperty (o, property, stored);
 }
 
@@ -1451,6 +1468,23 @@ bool GraphEditor::keyPressed (const juce::KeyPress& key)
     if (mods.isCommandDown() && (code == 'A' || code == 'a'))
     {
         roll->selectAll();
+        return true;
+    }
+    // Arrows nudge the selection: up/down a semitone (Shift: 10 cents),
+    // left/right 10 ms (Shift: 100 ms).
+    if (code == juce::KeyPress::upKey || code == juce::KeyPress::downKey || code == juce::KeyPress::leftKey
+        || code == juce::KeyPress::rightKey)
+    {
+        auto objects = roll->selectedObjects();
+        if (objects.empty())
+            return false;
+        const float dp = code == juce::KeyPress::upKey ? 1.0f : (code == juce::KeyPress::downKey ? -1.0f : 0.0f);
+        const double dt = code == juce::KeyPress::rightKey ? 0.01 : (code == juce::KeyPress::leftKey ? -0.01 : 0.0);
+        const float pitchStep = mods.isShiftDown() ? 0.1f : 1.0f;
+        const double timeStep = mods.isShiftDown() ? 10.0 : 1.0;
+        model.beginEdit (u8 ("Mover"));
+        for (auto& o : objects)
+            model.moveObject (o, std::max (-getD (o, GraphIds::start), dt * timeStep), dp * pitchStep);
         return true;
     }
     if (code == juce::KeyPress::escapeKey)

@@ -128,9 +128,9 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     formantKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::character, u8 ("Carácter"),
         u8 ("Escala la envolvente espectral ±50 %: simula un tracto vocal más corto (+) o más largo (−).")));
     for (auto& t : formantToggles)
-        pages[1].addAndMakeVisible (*t);
+        pages[2].addAndMakeVisible (*t);
     for (auto& k : formantKnobs)
-        pages[1].addAndMakeVisible (*k);
+        pages[2].addAndMakeVisible (*k);
 
     // Vibrato ------------------------------------------------------------------------
     vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibratoPreserve, u8 ("Conservar"),
@@ -149,8 +149,12 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     vibratoKnobs.push_back (std::make_unique<LabeledKnob> (state, ParamIDs::vibFormantMod, u8 ("Formante"),
         u8 ("Cuánto siguen los formantes al vibrato artificial (0 = timbre fijo, 100 % = timbre sigue al tono).")));
     for (auto& k : vibratoKnobs)
-        pages[2].addAndMakeVisible (*k);
-    pages[2].addAndMakeVisible (vibratoDisplay);
+        pages[3].addAndMakeVisible (*k);
+    pages[3].addAndMakeVisible (vibratoDisplay);
+    vibShapeBox.addItemList ({ u8 ("Seno"), u8 ("Triángulo"), u8 ("Cuadrada"), u8 ("Sierra") }, 1);
+    vibShapeBox.setTooltip (u8 ("Forma del vibrato artificial."));
+    vibShapeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (state, ParamIDs::vibShape, vibShapeBox);
+    pages[3].addAndMakeVisible (vibShapeBox);
     vibratoDisplay.setAccent (lookAndFeel.getAccent());
 
     // Harmonies ----------------------------------------------------------------------
@@ -177,7 +181,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
                                                                  vp.pan.get(), vp.level.get(), vp.humanize.get(), vp.mute.get(), vp.solo.get() })
             vp.panel.addAndMakeVisible (c);
         vp.mode->getCombo().onChange = [this] { updateVoiceVisibility(); };
-        pages[3].addChildComponent (vp.panel);
+        pages[4].addChildComponent (vp.panel);
 
         auto& b = voiceButtons[static_cast<size_t> (v)];
         b.setButtonText (u8 ("Voz ") + juce::String (v + 1));
@@ -187,7 +191,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
         b.setColour (juce::TextButton::textColourOffId, Palette::textMuted);
         b.setColour (juce::TextButton::textColourOnId, Palette::background);
         b.onClick = [this, v] { if (voiceButtons[static_cast<size_t> (v)].getToggleState()) selectVoice (v); };
-        pages[3].addAndMakeVisible (b);
+        pages[4].addAndMakeVisible (b);
     }
     voiceButtons[0].setToggleState (true, juce::dontSendNotification);
     selectVoice (0);
@@ -204,18 +208,28 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     for (size_t i = 0; i < std::size (busControls); ++i)
     {
         busKnobs.push_back (std::make_unique<LabeledKnob> (state, busControls[i].first, u8 (busControls[i].second), u8 (busTips[i])));
-        pages[4].addAndMakeVisible (*busKnobs.back());
+        pages[5].addAndMakeVisible (*busKnobs.back());
     }
 
     midiToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::midiTarget, u8 ("MIDI: nota objetivo"),
         u8 ("La nota MIDI sostenida (en la octava más cercana a la voz) es el objetivo de la corrección.")));
     midiToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::midiScaleLearn, u8 ("Aprender escala por MIDI"),
         u8 ("Mientras está activo, las notas que toques definen una escala personalizada (Escala = Personalizada).")));
+    midiToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::midiTargetExact, u8 ("Octava exacta"),
+        u8 ("Con «nota objetivo»: usa la nota MIDI en la octava tocada (para forzar saltos de octava). "
+            "Desactivado: la nota más cercana a la voz en cualquier octava.")));
+    midiToggles.push_back (std::make_unique<LabeledToggle> (state, ParamIDs::midiOut, u8 ("Enviar notas MIDI"),
+        u8 ("Envía las notas corregidas como MIDI (para doblar la voz con un sintetizador). En FL Studio: "
+            "⚙ → MIDI → Output port, y en el sintetizador el mismo puerto como entrada.")));
     for (auto& t : midiToggles)
-        pages[5].addAndMakeVisible (*t);
+        pages[6].addAndMakeVisible (*t);
+
+    // Notes of the scale (Escala / Activa / Ignorar / Eliminar) ---------------------
+    noteKeyboard = std::make_unique<NoteKeyboard> (state);
+    pages[1].addAndMakeVisible (*noteKeyboard);
 
     // Tabs --------------------------------------------------------------------------
-    const char* tabNames[] = { "Corrección", "Formantes", "Vibrato", "Armonías", "Bus", "MIDI" };
+    const char* tabNames[] = { "Corrección", "Notas", "Formantes", "Vibrato", "Armonías", "Bus", "MIDI" };
     for (size_t i = 0; i < tabs.size(); ++i)
     {
         auto& t = tabs[i];
@@ -308,6 +322,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     meter.setAccent (lookAndFeel.getAccent());
     trace.setAccent (lookAndFeel.getAccent());
     graphEditor->setAccent (lookAndFeel.getAccent());
+    noteKeyboard->setAccent (lookAndFeel.getAccent());
 
     setResizable (true, true);
     setResizeLimits (kBaseWidth * 3 / 4, kBaseHeight * 3 / 4, kBaseWidth * 2, kBaseHeight * 2);
@@ -385,6 +400,8 @@ void PluginEditor::applyAccent (juce::Colour c)
     meter.setAccent (c);
     trace.setAccent (c);
     vibratoDisplay.setAccent (c);
+    if (noteKeyboard != nullptr)
+        noteKeyboard->setAccent (c);
     if (graphEditor != nullptr)
         graphEditor->setAccent (c);
     processor.getValueTreeState().state.setProperty (kAccentProperty, c.toString(), nullptr);
@@ -679,6 +696,12 @@ void PluginEditor::timerCallback()
         trace.repaint();
     if (currentPage == Page::Vibrato)
         vibratoDisplay.repaint();
+    if (currentPage == Page::Notes)
+    {
+        auto pcOf = [] (float midi) { return midi < 0.0f ? -1 : ((juce::roundToInt (midi) % 12) + 12) % 12; };
+        noteKeyboard->setLiveNotes (lastFrame.voiced ? pcOf (dsp::hzToMidi (lastFrame.frequencyHz, lastFrame.referenceA4)) : -1,
+                                    lastFrame.voiced ? pcOf (lastFrame.targetMidi) : -1);
+    }
 
     // Held MIDI notes (MIDI page)
     if (currentPage == Page::Midi)
@@ -771,6 +794,9 @@ void PluginEditor::Content::resized()
         page.setBounds (kPagePanel);
     const auto local = kPagePanel.withZeroOrigin();
 
+    // Page 2: note states keyboard
+    owner.noteKeyboard->setBounds (local);
+
     // Page 1: correction knobs
     {
         auto row = local.reduced (8, 10);
@@ -828,9 +854,9 @@ void PluginEditor::Content::resized()
     // Page 6: MIDI toggles (held notes and routing help are painted)
     {
         auto col = local.reduced (16, 14).removeFromLeft (260);
-        col.removeFromTop (22);
+        col.removeFromTop (20);
         for (auto& t : owner.midiToggles)
-            t->setBounds (col.removeFromTop (34));
+            t->setBounds (col.removeFromTop (23));
     }
 
     // Page 3: [display][keep] | [synth knobs x6]
@@ -840,6 +866,7 @@ void PluginEditor::Content::resized()
         row.removeFromLeft (8);
         owner.vibratoKnobs[0]->setBounds (row.removeFromLeft (84));
         row.removeFromLeft (14); // divider
+        owner.vibShapeBox.setBounds (row.withHeight (20).removeFromRight (118).translated (0, -6));
         row.removeFromTop (14);  // "VIBRATO ARTIFICIAL" caption above the group
         const int w = row.getWidth() / static_cast<int> (owner.vibratoKnobs.size() - 1);
         for (size_t i = 1; i < owner.vibratoKnobs.size(); ++i)

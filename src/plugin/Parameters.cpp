@@ -268,6 +268,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { ParamIDs::graphMode, 1 }, u8 ("Modo gráfico"), false));
 
+    // ---- Feature audit (0.9.x) -------------------------------------------------
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::midiOut, 1 }, u8 ("MIDI: enviar notas"), false));
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::midiTargetExact, 1 }, u8 ("MIDI: octava exacta"), false));
+    layout.add (makeChoice (ParamIDs::vibShape, "Vibrato: forma",
+                            juce::StringArray { u8 ("Seno"), u8 ("Triángulo"), u8 ("Cuadrada"), u8 ("Sierra") }, 0));
+
     return layout;
 }
 
