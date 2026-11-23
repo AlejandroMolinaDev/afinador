@@ -185,5 +185,19 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 94 | Mover el proyecto a otro equipo (o borrar la carpeta de capturas): aviso «Falta el audio capturado», el resto del modo gráfico funciona | | |
 | 95 | CPU con ediciones de tiempo sonando (*Performance monitor*) | | |
 
+## Fase 10 — Instaladores y guía
+
+> Automático en CI: el instalador de Windows se instala en silencio, se comprueban las rutas, el host test pasa sobre el VST3 instalado y la desinstalación lo borra todo; el `.pkg` de macOS se instala con `installer`, se verifican las firmas, `auval` y el host test pasan sobre lo instalado en `/Library`.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 96 | Instalar en una máquina **sin herramientas de desarrollo** (sin Visual Studio / Xcode) | | |
+| 97 | FL Studio encuentra NovaPitch tras *Find installed plugins* (VST3, CLAP y AU en Mac) | | |
+| 98 | Abrir un proyecto guardado con una versión anterior: el plugin y sus ajustes se cargan igual | | |
+| 99 | Actualizar (instalar encima) con FL abierto: el instalador pide cerrarlo; después todo funciona | | |
+| 100 | La guía se abre desde el menú Inicio (Windows) / `/Library/Application Support/NovaPitch` (Mac) | | |
+| 101 | Desinstalar: desaparecen los plugins; presets y capturas del usuario se conservan | | |
+| 102 | macOS sin firma: el aviso de Gatekeeper se salta con clic derecho → Abrir | | |
+
 ## Notas / incidencias encontradas
 - 

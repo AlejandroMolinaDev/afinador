@@ -17,8 +17,14 @@
 | [pluginval](https://github.com/Tracktion/pluginval) | v1.0.4 | GPLv3 (tool only, not linked) |
 | [clap-validator](https://github.com/free-audio/clap-validator) | 0.3.2 | MIT |
 
-## Planned (added in later phases)
-| Dependency | Phase | License |
+## Planned (not used yet)
+| Dependency | When | License |
 |---|---|---|
-| Celemony ARA SDK 2.3.0 | 9 | Apache 2.0 |
-| AAX SDK | 9/10 (optional) | Avid license agreement |
+| Celemony ARA SDK 2.3.0 | after phase 10 (postponed) | Apache 2.0 |
+| AAX SDK | optional, needs an Avid developer account | Avid license agreement |
+
+## Build / packaging tools (not shipped)
+| Tool | Used for | License |
+|---|---|---|
+| [Inno Setup 6](https://jrsoftware.org/isinfo.php) | Windows installer | Inno Setup license (free, permissive) |
+| [Python-Markdown](https://github.com/Python-Markdown/markdown) | User guide HTML | BSD-3-Clause |

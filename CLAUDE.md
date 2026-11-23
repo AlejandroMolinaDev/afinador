@@ -1,7 +1,7 @@
 # CLAUDE.md — NovaPitch
 
 Real-time monophonic pitch correction plugin (vocal tuner) in C++20 / JUCE 8.
-Full spec: the original prompt document (phases 1–10). Current status: **Phase 9 done (key detector "Escuchar", instance sync "Sincronizar", captured audio + non-destructive time correction; Linux in CI). ARA2 postponed until after phase 10 (user decision; FL has no ARA); AAX prepared/off.** Next: phase 10 (installers + user guide).
+Full spec: the original prompt document (phases 1–10). Current status: **Phase 10 done — version 0.9.0 (beta)**: installers (Windows Inno Setup, macOS Universal `.pkg`), Spanish user guide; all phases 1–10 delivered except ARA2 (postponed until after phase 10 by the user; FL has no ARA) and AAX (needs Avid SDK). Pending on the user's side: manual FL tests (`docs/TESTING_FL.md`), Apple/Authenticode certificates, product licence (JUCE commercial vs AGPLv3). Next: whatever the user's FL testing reports, then 1.0.0.
 Roadmap and pending items: `docs/ROADMAP.md`.
 
 ## Priority: FL Studio on Windows AND macOS
@@ -22,6 +22,8 @@ FL Studio stores these in every saved project; changing them makes projects lose
 | Buses | main in + main out; Stereo→Stereo default, Mono→Mono, Mono→Stereo | `PluginProcessor.cpp` |
 | Parameter IDs | stable strings + version hint, never renamed/reused | `src/plugin/Parameters.h` |
 | State root | `NovaPitchState` + `stateVersion` attribute, migrations in `migrateState()` | `PluginProcessor.cpp` |
+| Windows installer AppId | `{237AEEF3-3E15-4C10-9146-21EAD2F85A67}` (upgrades/uninstall) | `installer/windows/NovaPitch.iss` |
+| macOS package ids | `com.novapitch.novapitch.pkg.{vst3,au,clap,app,docs}` | `installer/macos/build_pkg.sh`, `distribution.xml` |
 
 The product *name* (`PRODUCT_NAME`) can still change without breaking projects; the codes cannot.
 
@@ -55,6 +57,13 @@ build/tools/NovaPitchRender in.wav out.wav retuneSpeed=0 key=9 scale=1   # offli
 ./tools/demo/run_demo.sh build demo-out        # synthetic off-key phrase -> renders -> pitch plot (numpy, matplotlib)
 ```
 (On headless Linux prefix with `xvfb-run -a`.) The host test loads the *binary* through JUCE's hosting layer and runs FL-like scenarios: 6 sample rates × 4 max buffer sizes with random (and empty) blocks, parameter automation, MIDI, bypass toggling, latency (impulse) vs reported, save/reopen state, 8 instances, mono/stereo layouts, editor open/close while the audio thread runs.
+
+Installers (phase 10; CI builds, installs, tests and uninstalls them):
+```bash
+python3 tools/docs/build_guide.py docs/USER_GUIDE_es.md build/Guia_de_usuario.html     # needs `pip install markdown`
+installer/macos/build_pkg.sh build/NovaPitch_artefacts/Release 0.9.0 build/Guia_de_usuario.html dist   # macOS (.pkg)
+```
+Windows: `iscc /DAppVersion=0.9.0 /DArtefactsDir=<abs>\build\NovaPitch_artefacts\Release /DDocsDir=<abs>\build /DOutputDir=<abs>\dist installer\windows\NovaPitch.iss` (Inno Setup 6; `.iss` is UTF-8 with BOM). macOS signing/notarization via `DEVELOPER_ID_APP`, `DEVELOPER_ID_INSTALLER`, `NOTARY_PROFILE` (GitHub secrets of the same names).
 
 Validators (downloaded to `tools/bin/`, git-ignored): pluginval v1.0.4 `--strictness-level 10 --validate-in-process --validate <plugin>`, clap-validator 0.3.2 `validate <plugin.clap>`, `auval -strict -v aumf Npc1 Nvpt` on macOS. On Linux headless use `xvfb-run -a`.
 
@@ -118,3 +127,7 @@ CMake options: `NOVAPITCH_BUILD_TESTS` (ON), `NOVAPITCH_BUILD_TOOLS` (ON), `NOVA
 - Phase 9: objects and the captured curve stay in source time; the time map (undoable `Graph@warp`) maps them to output time at compile, so pitch edits follow their syllables.
 - Phase 9: time edits are rendered offline (background thread) and substituted for the input during playback, then processed by the normal chain — no second real-time engine, no extra latency.
 - Phase 9: ARA2 postponed until after phase 10 (user decision, 2026-11-23).
+- Phase 10: version 0.9.0 = feature-complete beta; 1.0.0 after the user's FL tests.
+- Phase 10: installers put plugins in the system folders FL scans (`Common Files\{VST3,CLAP}`, `/Library/Audio/Plug-Ins/*`); macOS components are non-relocatable (all formats share one bundle id); user data (presets, captures) is never removed on uninstall.
+- Phase 10: the user guide is Markdown (`docs/USER_GUIDE_es.md`) converted to one self-contained HTML (images embedded) shipped with the installers.
+- Phase 10: the plugin keeps `EDITOR_WANTS_KEYBOARD_FOCUS FALSE` so it never steals FL's shortcuts (space = play); the graph editor's shortcuts work when it has focus and every action also has a button.

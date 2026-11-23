@@ -1,0 +1,13 @@
+﻿NovaPitch — avisos de licencia
+
+NovaPitch incluye software de terceros con sus propias licencias:
+
+- JUCE 8 (framework de audio y formatos de plugin). Licencia comercial de JUCE o AGPLv3.
+- SDK de VST3 de Steinberg (incluido en JUCE). Licencia MIT.
+- CLAP y clap-juce-extensions. Licencia MIT.
+- signalsmith-stretch y signalsmith-linear. Licencia MIT.
+
+VST es una marca registrada de Steinberg Media Technologies GmbH.
+
+La lista completa, con versiones y enlaces, está en THIRD_PARTY_LICENSES.md, que se
+instala junto a la aplicación.

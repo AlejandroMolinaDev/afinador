@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>NovaPitch @VERSION@</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENCIAS.txt"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <allowed-os-versions>
+        <os-version min="10.13"/>
+    </allowed-os-versions>
+    <choices-outline>
+        <line choice="vst3"/>
+        <line choice="au"/>
+        <line choice="clap"/>
+        <line choice="app"/>
+        <line choice="docs"/>
+    </choices-outline>
+    <choice id="vst3" title="VST3" description="Plugin VST3 (FL Studio y la mayoría de programas). /Library/Audio/Plug-Ins/VST3">
+        <pkg-ref id="com.novapitch.novapitch.pkg.vst3"/>
+    </choice>
+    <choice id="au" title="Audio Unit" description="Plugin AU (FL Studio, Logic, GarageBand...). /Library/Audio/Plug-Ins/Components">
+        <pkg-ref id="com.novapitch.novapitch.pkg.au"/>
+    </choice>
+    <choice id="clap" title="CLAP" description="Plugin CLAP. /Library/Audio/Plug-Ins/CLAP">
+        <pkg-ref id="com.novapitch.novapitch.pkg.clap"/>
+    </choice>
+    <choice id="app" title="Aplicación independiente" description="NovaPitch sin DAW, en /Applications.">
+        <pkg-ref id="com.novapitch.novapitch.pkg.app"/>
+    </choice>
+    <choice id="docs" title="Guía de usuario" description="Guía en español en /Library/Application Support/NovaPitch.">
+        <pkg-ref id="com.novapitch.novapitch.pkg.docs"/>
+    </choice>
+    <pkg-ref id="com.novapitch.novapitch.pkg.vst3" version="@VERSION@" onConclusion="none">vst3.pkg</pkg-ref>
+    <pkg-ref id="com.novapitch.novapitch.pkg.au" version="@VERSION@" onConclusion="none">au.pkg</pkg-ref>
+    <pkg-ref id="com.novapitch.novapitch.pkg.clap" version="@VERSION@" onConclusion="none">clap.pkg</pkg-ref>
+    <pkg-ref id="com.novapitch.novapitch.pkg.app" version="@VERSION@" onConclusion="none">app.pkg</pkg-ref>
+    <pkg-ref id="com.novapitch.novapitch.pkg.docs" version="@VERSION@" onConclusion="none">docs.pkg</pkg-ref>
+</installer-gui-script>

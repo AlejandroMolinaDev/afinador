@@ -13,7 +13,7 @@ Estado por fases (ver especificación original, sección 11).
 | 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ✅ Hecho (prueba manual en FL pendiente) |
 | 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ✅ Hecho (prueba manual en FL pendiente) |
 | 9 | Corrección temporal, detector de tonalidad + sync de instancias, ARA2, AAX, Linux | ✅ Hecho salvo ARA2 (pospuesto por decisión tuya) y AAX (requiere SDK de Avid); Linux en CI |
-| 10 | Instaladores (Inno Setup / .pkg firmado y notarizado), guía de usuario | ⏳ |
+| 10 | Instaladores (Inno Setup / .pkg firmado y notarizado), guía de usuario | ✅ Hecho (firma de Apple y Authenticode pendientes de tus certificados; prueba en máquina limpia pendiente) |
 
 ## Pendientes registrados
 
@@ -97,5 +97,12 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] El detector de tonalidad propone Mayor / Menor natural; otras escalas (modos, pentatónicas) se eligen a mano.
 
 ### Fase 10
-- [ ] `docs/USER_GUIDE_es.md` completa.
-- [ ] Firma Developer ID + notarización en macOS; firma Authenticode opcional en Windows.
+- [x] `docs/USER_GUIDE_es.md` completa (+ HTML autónomo con imágenes, `tools/docs/build_guide.py`, incluido en los instaladores).
+- [x] Instalador de Windows (Inno Setup 6): VST3/CLAP en `Common Files`, aplicación + guía en `Program Files\NovaPitch`, componentes, desinstalador, cierre de FL si tiene el plugin cargado. En CI: se instala en silencio, se pasa el host test al VST3 instalado y se desinstala.
+- [x] Instalador de macOS (`.pkg` Universal, productbuild): VST3/AU/CLAP en `/Library/Audio/Plug-Ins`, app en `/Applications`, guía en `/Library/Application Support/NovaPitch`; bundles no reubicables; caché AU refrescada. En CI: se instala con `installer`, se verifican firmas, auval y host test sobre lo instalado.
+- [ ] **Firma Developer ID + notarización en macOS**: el script ya lo hace con `DEVELOPER_ID_APP`, `DEVELOPER_ID_INSTALLER` y `NOTARY_PROFILE` (secretos de GitHub o variables locales); requiere tu cuenta de Apple Developer. Sin ellos el `.pkg` sale sin firmar (clic derecho → Abrir).
+- [ ] Firma Authenticode opcional del instalador de Windows (evita el aviso de SmartScreen); requiere certificado de firma de código.
+- [ ] **Prueba en máquinas limpias** (sin herramientas de desarrollo) y escaneo en FL Studio — `docs/TESTING_FL.md`, sección Fase 10.
+- [ ] **Licencia del producto**: definir el EULA y la licencia de JUCE (comercial o AGPLv3; con AGPLv3 habría que publicar el código fuente) antes de distribuir públicamente. El instalador hoy solo muestra los avisos de terceros.
+- [ ] Publicar *Releases* en GitHub (hoy los instaladores son artefactos de CI) y pasar a 1.0.0 tras la prueba en FL.
+- [ ] Sustituir `example.com` y el nombre de empresa provisional (ver Fase 1).

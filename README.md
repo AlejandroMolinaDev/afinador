@@ -6,7 +6,15 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 ![NovaPitch — Fase 9, modo gráfico con corrección temporal](docs/img/fase9-tiempo.png)
 
-**Estado:** Fase 9 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, 4 voces de armonía, MIDI Target, aprender escala por MIDI, **modo gráfico sin ARA** (captura reproduciendo en FL Studio, notas / líneas / curvas, deshacer ilimitado), **corrección temporal no destructiva**, **detector de tonalidad** («Escuchar») y **sincronización entre instancias**. ARA2 queda pospuesto (FL no lo soporta). Siguiente: instaladores y guía de usuario (Fase 10). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 9 — corrección automática (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición, mezcla), 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato, presets, MIDI Learn, 4 voces de armonía, MIDI Target, aprender escala por MIDI, **modo gráfico sin ARA** (captura reproduciendo en FL Studio, notas / líneas / curvas, deshacer ilimitado), **corrección temporal no destructiva**, **detector de tonalidad** («Escuchar») y **sincronización entre instancias**. ARA2 queda pospuesto (FL no lo soporta). **Fase 10:** instaladores (Windows Inno Setup, macOS `.pkg` Universal) y [guía de usuario en español](docs/USER_GUIDE_es.md). Versión **0.9.0 (beta)**: falta tu prueba en FL Studio para llegar a 1.0.0. Ver `docs/ROADMAP.md`.
+
+## Instalar (usuarios)
+Descarga el instalador de la última ejecución de CI (pestaña *Actions* → artefactos) o de *Releases*:
+- **Windows**: `NovaPitch-<versión>-Windows-x64-Setup.exe` (artefacto `NovaPitch-Windows-x64-Setup`) → VST3 y CLAP en `C:\Program Files\Common Files\{VST3,CLAP}`, aplicación y guía en `C:\Program Files\NovaPitch`.
+- **macOS**: `NovaPitch-<versión>-macOS.pkg` (artefacto `NovaPitch-macOS-Installer`) → `/Library/Audio/Plug-Ins/{VST3,Components,CLAP}`, `/Applications/NovaPitch.app` y la guía en `/Library/Application Support/NovaPitch`. Las compilaciones de CI sin certificados de Apple no van firmadas: clic derecho → *Abrir*.
+- Después, en FL Studio: *Options → Manage plugins → Find installed plugins*.
+
+La [guía de usuario](docs/USER_GUIDE_es.md) explica cada control, el modo gráfico, la corrección temporal y el enrutado MIDI en FL.
 
 ### Modo gráfico en FL Studio (sin ARA)
 1. Botón **Gráfico** en la cabecera → **● Capturar** → reproduce la canción: la curva de afinación se dibuja.
@@ -67,7 +75,21 @@ ctest --test-dir build -C Release
 
 Los plugins quedan en `build/NovaPitch_artefacts/Release/` (`VST3/`, `CLAP/`, `AU/`, `Standalone/`).
 
-## Instalar y probar en FL Studio
+## Instalar y probar en FL Studio (desarrollo)
+
+Para crear los instaladores en local:
+```bash
+python3 tools/docs/build_guide.py docs/USER_GUIDE_es.md build/Guia_de_usuario.html   # requiere: pip install markdown
+```
+```bash
+iscc /DAppVersion=0.9.0 /DArtefactsDir=%CD%\build\NovaPitch_artefacts\Release /DDocsDir=%CD%\build /DOutputDir=%CD%\dist installer\windows\NovaPitch.iss
+```
+```bash
+installer/macos/build_pkg.sh build/NovaPitch_artefacts/Release 0.9.0 build/Guia_de_usuario.html dist
+```
+(En macOS, `DEVELOPER_ID_APP`, `DEVELOPER_ID_INSTALLER` y `NOTARY_PROFILE` activan la firma y la notarización.)
+
+Copiar los plugins sin instalador:
 
 ### Windows
 En una PowerShell **como administrador**:

@@ -80,6 +80,50 @@ jobs:
           CLAPVAL=$(find tools/bin -name 'clap-validator.exe' | head -1)
           "$CLAPVAL" validate "$ART/CLAP/NovaPitch.clap"
 
+      - name: User guide (HTML)
+        shell: pwsh
+        run: |
+          python -m venv .venv-docs
+          .venv-docs\Scripts\python -m pip install --quiet markdown
+          .venv-docs\Scripts\python tools\docs\build_guide.py docs\USER_GUIDE_es.md build\Guia_de_usuario.html
+
+      # Phase 10: installer built, installed silently like a user, the installed
+      # VST3 checked with the host test, then uninstalled.
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(NovaPitch VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$version" "/DArtefactsDir=$PWD\build\NovaPitch_artefacts\Release" "/DDocsDir=$PWD\build" "/DOutputDir=$PWD\dist" installer\windows\NovaPitch.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Install like a user, test the installed plugin, uninstall
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\NovaPitch-*-Setup.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log; exit 1 }
+          $vst3 = "$env:CommonProgramFiles\VST3\NovaPitch.vst3"
+          $clap = "$env:CommonProgramFiles\CLAP\NovaPitch.clap"
+          $app = "$env:ProgramFiles\NovaPitch\NovaPitch.exe"
+          $guide = "$env:ProgramFiles\NovaPitch\Guia_de_usuario.html"
+          foreach ($f in @($vst3, $clap, $app, $guide)) { if (-not (Test-Path $f)) { Write-Error "missing $f"; exit 1 } else { Write-Host "installed: $f" } }
+          $ht = Get-ChildItem -Recurse build\tools -Filter NovaPitchHostTest.exe | Select-Object -First 1
+          & $ht.FullName $vst3
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Start-Process -FilePath "$env:ProgramFiles\NovaPitch\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          for ($i = 0; $i -lt 60 -and ((Test-Path $vst3) -or (Test-Path $clap) -or (Test-Path $app)); $i++) { Start-Sleep -Seconds 1 }
+          foreach ($f in @($vst3, $clap, $app)) { if (Test-Path $f) { Write-Error "not removed: $f"; exit 1 } }
+          Write-Host "uninstalled cleanly"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: NovaPitch-Windows-x64-Setup
+          path: dist/NovaPitch-*-Setup.exe
+          if-no-files-found: error
+
       - name: Upload artefacts
         uses: actions/upload-artifact@v5
         with:
@@ -191,6 +235,48 @@ jobs:
                 tools/install_plugins.sh dist/NovaPitch-macOS-Universal/
           ditto -c -k --keepParent dist/NovaPitch-macOS-Universal dist/NovaPitch-macOS-Universal.zip
 
+      - name: User guide (HTML)
+        run: |
+          python3 -m venv .venv-docs
+          .venv-docs/bin/python -m pip install --quiet markdown
+          .venv-docs/bin/python tools/docs/build_guide.py docs/USER_GUIDE_es.md build/Guia_de_usuario.html
+
+      # Phase 10: .pkg built (Developer ID signing / notarization only when the
+      # secrets exist), installed like a user, installed plugins validated.
+      - name: Installer (.pkg)
+        env:
+          DEVELOPER_ID_APP: ${{ secrets.DEVELOPER_ID_APP }}
+          DEVELOPER_ID_INSTALLER: ${{ secrets.DEVELOPER_ID_INSTALLER }}
+          NOTARY_PROFILE: ${{ secrets.NOTARY_PROFILE }}
+        run: |
+          VERSION=$(sed -n 's/^project(NovaPitch VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          installer/macos/build_pkg.sh "$ART" "$VERSION" build/Guia_de_usuario.html dist
+
+      - name: Install the .pkg like a user and test the installed plugins
+        run: |
+          rm -rf ~/Library/Audio/Plug-Ins/Components/NovaPitch.component
+          sudo installer -pkg dist/NovaPitch-*-macOS.pkg -target /
+          for b in /Library/Audio/Plug-Ins/VST3/NovaPitch.vst3 /Library/Audio/Plug-Ins/Components/NovaPitch.component \
+                   /Library/Audio/Plug-Ins/CLAP/NovaPitch.clap /Applications/NovaPitch.app; do
+            test -d "$b" || { echo "missing $b"; exit 1; }
+            codesign --verify --strict "$b"
+            echo "installed: $b"
+          done
+          test -f "/Library/Application Support/NovaPitch/Guia_de_usuario.html"
+          killall -9 AudioComponentRegistrar || true
+          sleep 2
+          auval -strict -v aumf Npc1 Nvpt
+          HT=$(find build/tools -name NovaPitchHostTest -type f -perm -u+x | head -1)
+          "$HT" /Library/Audio/Plug-Ins/VST3/NovaPitch.vst3
+          "$HT" /Library/Audio/Plug-Ins/Components/NovaPitch.component
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: NovaPitch-macOS-Installer
+          path: dist/NovaPitch-*-macOS.pkg
+          if-no-files-found: error
+
       - name: Upload artefacts
         uses: actions/upload-artifact@v5
         with:
@@ -274,9 +360,12 @@ jobs:
 
       - name: Package
         run: |
+          python3 -m venv .venv-docs
+          .venv-docs/bin/python -m pip install --quiet markdown
+          .venv-docs/bin/python tools/docs/build_guide.py docs/USER_GUIDE_es.md build/Guia_de_usuario.html
           mkdir -p dist/NovaPitch-Linux-x64
           cp -R "$ART/VST3/NovaPitch.vst3" "$ART/CLAP/NovaPitch.clap" "$ART/Standalone/NovaPitch" \
-                tools/install_plugins.sh dist/NovaPitch-Linux-x64/
+                tools/install_plugins.sh build/Guia_de_usuario.html THIRD_PARTY_LICENSES.md dist/NovaPitch-Linux-x64/
           tar -C dist -czf dist/NovaPitch-Linux-x64.tar.gz NovaPitch-Linux-x64
 
       - name: Upload artefacts
