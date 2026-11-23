@@ -50,5 +50,22 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 20 | FL Studio con "Abrir con Rosetta" (o Mac Intel): la ventana muestra "(x86_64)" | |
 | 21 | Binario descargado de CI: tras `xattr -dr com.apple.quarantine` carga sin aviso de Gatekeeper | |
 
+## Fase 2 — Detección y medidor
+
+> Lo que ya se prueba automáticamente en cada CI (sin FL): `tools/hosttest` carga el binario VST3 (y AU en Mac) y simula al host: 6 sample rates × 4 tamaños de buffer con bloques irregulares y vacíos, automatización de parámetros, MIDI, bypass, latencia medida = reportada, guardar/reabrir estado, 8 instancias, layouts mono/estéreo y abrir/cerrar el editor mientras suena. Además: pluginval 10, auval, clap-validator, benchmark de CPU y capturas de la UI (artefacto `UI-snapshots-*`).
+> Lo que **solo** se puede comprobar en FL Studio es lo de esta tabla.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 22 | Micrófono → insert del Mixer con NovaPitch: el medidor muestra la nota cantada, estable (sin saltar de octava) | | |
+| 23 | Notas sostenidas: los cents se mueven suavemente y "afinado" aparece cerca de 0 ¢ | | |
+| 24 | Sibilantes (s, sh) y respiraciones: el medidor muestra "—" (sin señal afinable), no notas falsas | | |
+| 25 | Cambiar el **Perfil de entrada** mientras se canta: sin clics, el medidor se recupera | | |
+| 26 | **Sensibilidad** baja en una toma ruidosa → menos detecciones falsas; alta en voz susurrada → detecta | | |
+| 27 | Gráfico inferior: la curva sigue la melodía de los últimos 5 s | | |
+| 28 | Automatizar *Perfil de entrada* y *Sensibilidad* desde FL (clic derecho → *Create automation clip*) | | |
+| 29 | La lista de parámetros del plugin en FL muestra solo los parámetros de NovaPitch (sin cientos de "MIDI CC") | | |
+| 30 | CPU del plugin en el Mixer (*Performance monitor*) a 48 kHz / buffer 128: anotar % | | |
+
 ## Notas / incidencias encontradas
 - 

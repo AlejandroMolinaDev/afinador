@@ -4,7 +4,9 @@
 add_executable(NovaPitchTests
     unit/PassthroughTests.cpp
     unit/StateTests.cpp
+    unit/PitchDetectorTests.cpp
     unit/TestHelpers.h
+    signals/SignalGenerators.h
 )
 
 target_compile_definitions(NovaPitchTests PRIVATE

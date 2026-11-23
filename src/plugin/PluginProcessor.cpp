@@ -41,6 +41,11 @@ NovaPitchProcessor::NovaPitchProcessor()
       apvts (*this, nullptr, juce::Identifier (kStateTreeType), createParameterLayout())
 {
     apvts.state.setProperty (kStateVersionProperty, kStateVersion, nullptr);
+    inputProfileParam = apvts.getRawParameterValue (ParamIDs::inputProfile);
+    sensitivityParam = apvts.getRawParameterValue (ParamIDs::sensitivity);
+    jassert (inputProfileParam != nullptr && sensitivityParam != nullptr);
+
+    pitchDetector.setListener (this);
 }
 
 //==============================================================================
@@ -52,7 +57,17 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     diagnostics.numOutputChannels.store (getTotalNumOutputChannels(), std::memory_order_relaxed);
     diagnostics.resetBlockStats();
 
-    // All DSP buffers will be allocated here in later phases (never in processBlock).
+    // All DSP buffers are allocated here (never in processBlock).
+    inputSampleRate = sampleRate;
+    monoScratch.assign (static_cast<size_t> (juce::jmax (maximumExpectedSamplesPerBlock, 512)), 0.0f);
+
+    pitchDetector.setProfile (dsp::inputProfileFromIndex (juce::roundToInt (inputProfileParam->load())));
+    pitchDetector.setSensitivity (sensitivityParam->load());
+    pitchDetector.prepare (sampleRate);
+    pitchFrameRate.store (pitchDetector.getFrameRate(), std::memory_order_relaxed);
+    // The FIFO is not cleared here (the editor may be reading it concurrently);
+    // the UI detects the time discontinuity instead.
+
     updateReportedLatency();
 }
 
@@ -60,7 +75,18 @@ void NovaPitchProcessor::releaseResources() {}
 
 void NovaPitchProcessor::reset()
 {
-    // Clears DSP state (delay lines, detectors...) in later phases.
+    pitchDetector.reset();
+}
+
+void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
+{
+    PitchFrame frame;
+    frame.timeSeconds = static_cast<double> (e.sampleIndex) / inputSampleRate;
+    frame.frequencyHz = e.voiced ? e.frequencyHz : 0.0f;
+    frame.confidence = e.confidence;
+    frame.rmsDb = e.rmsDb;
+    frame.voiced = e.voiced;
+    pitchFifo.push (frame);
 }
 
 void NovaPitchProcessor::updateReportedLatency()
@@ -107,6 +133,25 @@ void NovaPitchProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     diagnostics.lastBlockSize.store (numSamples, std::memory_order_relaxed);
     updateMin (diagnostics.minBlockSize, numSamples);
     updateMax (diagnostics.maxBlockSize, numSamples);
+
+    // Pitch analysis on the (mono-summed) input. Detection on the sum keeps the
+    // same correction ratio for both channels in stereo (phase coherence).
+    pitchDetector.setProfile (dsp::inputProfileFromIndex (juce::roundToInt (inputProfileParam->load())));
+    pitchDetector.setSensitivity (sensitivityParam->load());
+
+    if (numIn > 0 && ! monoScratch.empty())
+    {
+        const float gain = 1.0f / static_cast<float> (numIn);
+        const int chunkSize = static_cast<int> (monoScratch.size()); // FL may exceed the prepared size
+        for (int start = 0; start < numSamples; start += chunkSize)
+        {
+            const int n = juce::jmin (chunkSize, numSamples - start);
+            juce::FloatVectorOperations::copyWithMultiply (monoScratch.data(), buffer.getReadPointer (0, start), gain, n);
+            for (int ch = 1; ch < numIn; ++ch)
+                juce::FloatVectorOperations::addWithMultiply (monoScratch.data(), buffer.getReadPointer (ch, start), gain, n);
+            pitchDetector.process (monoScratch.data(), n);
+        }
+    }
 
     // Passthrough. Mono->Stereo: duplicate the mono input; any other extra
     // output channel is cleared so it never contains garbage.

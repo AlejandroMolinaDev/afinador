@@ -4,7 +4,7 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-**Estado:** Fase 1 — esqueleto *passthrough* (el audio pasa sin cambios). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 2 — detección de afinación en tiempo real con medidor y gráfico (el audio todavía pasa sin cambios; la corrección llega en la Fase 3). Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|
@@ -86,8 +86,14 @@ xattr -dr com.apple.quarantine NovaPitch.vst3 NovaPitch.component NovaPitch.clap
 
 Checklist completo de pruebas manuales: [`docs/TESTING_FL.md`](docs/TESTING_FL.md).
 
-## Integración continua
-GitHub Actions compila en Windows x64, macOS Universal y Linux; ejecuta los tests unitarios, **pluginval (strictness 10)**, `auval` (Mac) y **clap-validator**, y publica los binarios como artefactos descargables de cada ejecución (pestaña *Actions*).
+## Integración continua y pruebas automáticas
+GitHub Actions compila en Windows x64, macOS Universal y Linux y ejecuta:
+- tests unitarios (Catch2) con señales sintéticas (precisión de detección < 5 cents);
+- **host test** (`tools/hosttest`): carga el binario VST3 (y AU en Mac) como lo haría un DAW y simula el comportamiento de FL Studio (bloques irregulares y vacíos, cambios de sample rate, automatización, MIDI, bypass, guardar/reabrir, varias instancias, latencia, abrir/cerrar editor mientras suena);
+- **pluginval (strictness 10)**, `auval` (Mac) y **clap-validator**;
+- benchmark de CPU (aparece en el resumen de la ejecución) y capturas de la interfaz (`UI-snapshots-*`).
+
+Los binarios quedan como artefactos descargables de cada ejecución (pestaña *Actions*). FL Studio no puede ejecutarse en CI, por eso la prueba final con voz real sigue en `docs/TESTING_FL.md`.
 
 ## Licencias
 - **JUCE 8**: licencia comercial (plan *Starter* gratuito hasta el límite de ingresos de JUCE) **o** AGPLv3. Para distribuir NovaPitch como software cerrado necesitas una licencia JUCE adecuada a tus ingresos.

@@ -39,6 +39,25 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: Host test (VST3, FL-like scenarios)
+        shell: bash
+        run: |
+          HT=$(find build/tools -name 'NovaPitchHostTest.exe' -type f | head -1)
+          "$HT" "$ART/VST3/NovaPitch.vst3" --editor
+
+      - name: CPU benchmark
+        shell: bash
+        run: |
+          BENCH=$(find build/tools -name 'NovaPitchBench.exe' -type f | head -1)
+          "$BENCH" | tee bench.txt
+          { echo '### CPU benchmark (Windows x64)'; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: UI snapshots
+        shell: bash
+        run: |
+          SNAP=$(find build/tools -name 'NovaPitchSnapshot.exe' -type f | head -1)
+          "$SNAP" snapshots
+
       - name: Download validators
         shell: bash
         run: |
@@ -72,6 +91,12 @@ jobs:
             tools/install_plugins.ps1
           if-no-files-found: error
 
+      - name: Upload UI snapshots
+        uses: actions/upload-artifact@v5
+        with:
+          name: UI-snapshots-Windows
+          path: snapshots/*.png
+
   # ---------------------------------------------------------------------------
   # macOS Universal (arm64 + x86_64) — FL Studio for Mac (VST3 + AU + CLAP),
   # native on Apple Silicon and on Intel / Rosetta.
@@ -92,6 +117,17 @@ jobs:
 
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: CPU benchmark
+        run: |
+          BENCH=$(find build/tools -name NovaPitchBench -type f -perm -u+x | head -1)
+          "$BENCH" | tee bench.txt
+          { echo '### CPU benchmark (macOS)'; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: UI snapshots
+        run: |
+          SNAP=$(find build/tools -name NovaPitchSnapshot -type f -perm -u+x | head -1)
+          "$SNAP" snapshots
 
       - name: Verify Universal Binary
         run: |
@@ -128,6 +164,12 @@ jobs:
           auval -a | grep -i novapitch || true
           auval -strict -v aumf Npc1 Nvpt
 
+      - name: Host test (VST3 + AU, FL-like scenarios)
+        run: |
+          HT=$(find build/tools -name NovaPitchHostTest -type f -perm -u+x | head -1)
+          "$HT" "$ART/VST3/NovaPitch.vst3" --editor
+          "$HT" ~/Library/Audio/Plug-Ins/Components/NovaPitch.component --editor
+
       - name: pluginval (VST3 + AU, strictness 10)
         run: |
           PV=tools/bin/pluginval.app/Contents/MacOS/pluginval
@@ -156,6 +198,12 @@ jobs:
           path: dist/NovaPitch-macOS-Universal.zip
           if-no-files-found: error
 
+      - name: Upload UI snapshots
+        uses: actions/upload-artifact@v5
+        with:
+          name: UI-snapshots-macOS
+          path: snapshots/*.png
+
   # ---------------------------------------------------------------------------
   # Linux x64 — optional target, cheap early warning for build/test breakage.
   # ---------------------------------------------------------------------------
@@ -181,6 +229,16 @@ jobs:
 
       - name: Unit tests
         run: ctest --test-dir build --output-on-failure
+
+      - name: Host test (VST3, FL-like scenarios)
+        run: |
+          HT=$(find build/tools -name NovaPitchHostTest -type f -perm -u+x | head -1)
+          xvfb-run -a "$HT" "$ART/VST3/NovaPitch.vst3" --editor
+
+      - name: CPU benchmark
+        run: |
+          ./build/tools/NovaPitchBench | tee bench.txt
+          { echo '### CPU benchmark (Linux x64)'; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download validators
         run: |

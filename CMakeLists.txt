@@ -90,6 +90,19 @@ juce_add_plugin(NovaPitch
     HARDENED_RUNTIME_OPTIONS    com.apple.security.device.audio-input
 )
 
+# Pure DSP (no GUI): src/dsp. Used by the plugin, the unit tests and tools/bench.
+add_library(NovaPitchDsp INTERFACE)
+
+target_sources(NovaPitchDsp INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/Biquad.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/InputProfile.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PitchUtils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PitchDetector.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/PitchDetector.h
+)
+target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp)
+
 # All plugin code lives in an INTERFACE library so the unit tests compile exactly
 # the same sources as the plugin (without the plugin-format wrappers).
 add_library(NovaPitchCore INTERFACE)
@@ -99,10 +112,15 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PluginProcessor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/Parameters.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/Parameters.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PitchFrameFifo.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LookAndFeel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LookAndFeel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/TuningMeter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/TuningMeter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PitchTrace.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PitchTrace.h
 )
 
 target_include_directories(NovaPitchCore INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -112,6 +130,10 @@ target_compile_definitions(NovaPitchCore
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
+        # Don't expose ~2080 "MIDI CC" pseudo-parameters in VST3 (they would clutter
+        # FL Studio's parameter / automation browser). MIDI notes still arrive as
+        # VST3 note events; CC control in FL uses "Link to controller".
+        JUCE_VST3_EMULATE_MIDI_CC_WITH_PARAMETERS=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_REPORT_APP_USAGE=0
         JUCE_WIN_PER_MONITOR_DPI_AWARE=1   # crisp UI on HiDPI Windows; verify in FL (docs/TESTING_FL.md)
@@ -121,8 +143,8 @@ target_compile_definitions(NovaPitchCore
 
 target_link_libraries(NovaPitchCore
     INTERFACE
+        NovaPitchDsp
         juce::juce_audio_utils
-        juce::juce_dsp
 )
 
 target_link_libraries(NovaPitch
@@ -143,6 +165,14 @@ if(NOVAPITCH_ENABLE_CLAP)
         CLAP_MANUAL_URL  "https://example.com/novapitch/manual"
         CLAP_SUPPORT_URL "https://example.com/novapitch/support"
         DO_COPY          ${NOVAPITCH_COPY_AFTER_BUILD})
+endif()
+
+# ---------------------------------------------------------------------------
+# Developer / CI tools: host test, benchmark, UI snapshots
+# ---------------------------------------------------------------------------
+option(NOVAPITCH_BUILD_TOOLS "Build tools/ (host test, benchmark, UI snapshot)" ON)
+if(NOVAPITCH_BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()
 
 # ---------------------------------------------------------------------------

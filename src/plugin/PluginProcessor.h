@@ -2,6 +2,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "dsp/PitchDetector.h"
+#include "plugin/PitchFrameFifo.h"
+
 #include <atomic>
 #include <cstdint>
 
@@ -35,7 +38,8 @@ struct HostDiagnostics
     }
 };
 
-class NovaPitchProcessor final : public juce::AudioProcessor
+class NovaPitchProcessor final : public juce::AudioProcessor,
+                                 private dsp::PitchDetector::Listener
                               #if HAS_CLAP_JUCE_EXTENSIONS
                                , public clap_juce_extensions::clap_properties
                               #endif
@@ -86,14 +90,31 @@ public:
     HostDiagnostics& getDiagnostics() noexcept { return diagnostics; }
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
 
+    /** Pitch frames for the UI (consumer: message thread). */
+    PitchFrameFifo& getPitchFrameFifo() noexcept { return pitchFifo; }
+    /** Analysis frames per second (for UI time bases). */
+    double getPitchFrameRate() const noexcept { return pitchFrameRate.load (std::memory_order_relaxed); }
+
 private:
     /** Reports latency to the host only when it actually changes. Must be called
         from prepareToPlay or the message thread, never from processBlock. FL
         Studio uses this value for plugin delay compensation (PDC). */
     void updateReportedLatency();
 
+    // PitchDetector::Listener (audio thread)
+    void pitchFrameReady (const dsp::PitchEstimate&) noexcept override;
+
     juce::AudioProcessorValueTreeState apvts;
+    std::atomic<float>* inputProfileParam = nullptr;
+    std::atomic<float>* sensitivityParam = nullptr;
+
     HostDiagnostics diagnostics;
+
+    dsp::PitchDetector pitchDetector;
+    std::vector<float> monoScratch;
+    PitchFrameFifo pitchFifo;
+    std::atomic<double> pitchFrameRate { 0.0 };
+    double inputSampleRate = 48000.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NovaPitchProcessor)
 };

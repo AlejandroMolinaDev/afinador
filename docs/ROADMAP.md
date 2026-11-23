@@ -4,8 +4,8 @@ Estado por fases (ver especificación original, sección 11).
 
 | Fase | Entregable | Estado |
 |---|---|---|
-| 1 | Esqueleto: CMake + JUCE 8, VST3/AU/CLAP/Standalone passthrough, CI Win/Mac/Linux, pluginval | ✅ Hecho (pendiente prueba manual en FL Studio) |
-| 2 | PitchDetector (YIN/MPM) + perfiles + voicing + medidor de afinación | ⏳ |
+| 1 | Esqueleto: CMake + JUCE 8, VST3/AU/CLAP/Standalone passthrough, CI Win/Mac/Linux, pluginval | ✅ Hecho (prueba manual en FL pendiente) |
+| 2 | PitchDetector (YIN/MPM) + perfiles + voicing + medidor de afinación | ✅ Hecho (prueba manual en FL pendiente) |
 | 3 | NoteMapper + CorrectionCurve + PSOLA (Live/Tracking) + transposición + mezcla + latencia | ⏳ |
 | 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ⏳ |
 | 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ⏳ |
@@ -24,6 +24,15 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] clap-validator 0.3.2 es la última versión con binarios publicados detectables; revisar versiones nuevas (existe el tag 0.4.1).
 - [ ] Evaluar migración a JUCE 9.x (existe 9.0.6). La especificación exige JUCE 8; revisar licencia, cambios de API y compatibilidad con clap-juce-extensions y ARA antes de migrar.
 - [ ] Sustituir URLs `example.com` (web, manual, soporte) y `COMPANY_NAME` por los definitivos antes de publicar.
+
+### Fase 2
+- [ ] Prueba manual con voz real en FL Studio (Windows y Mac): el medidor debe seguir la voz de forma estable (`docs/TESTING_FL.md`, sección Fase 2).
+- [ ] Afinar umbrales de voicing con grabaciones reales de voz (hasta ahora solo señales sintéticas).
+- [ ] Referencia A4 (400–480 Hz) para el medidor: llega con el parámetro de la Fase 3.
+- [ ] MIDI Learn (Fase 6) en VST3: sin emulación de CC, el aprendizaje interno solo verá CC en CLAP/AU; en VST3 se documentará "Link to controller" de FL.
+
+### Fase 3
+- [ ] Compensar el retardo de detección (≈ medio ventana + mediana) con lookahead en Tracking/HQ.
 
 ### Fase 4
 - [ ] Añadir submódulo `signalsmith-stretch`.

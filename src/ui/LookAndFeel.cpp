@@ -7,9 +7,23 @@ NovaLookAndFeel::NovaLookAndFeel()
 {
     setColour (juce::ResizableWindow::backgroundColourId, Palette::background);
     setColour (juce::Label::textColourId, Palette::textPrimary);
-    setColour (juce::TooltipWindow::backgroundColourId, Palette::panel);
+    setColour (juce::TooltipWindow::backgroundColourId, Palette::panelRaised);
     setColour (juce::TooltipWindow::textColourId, Palette::textPrimary);
     setColour (juce::TooltipWindow::outlineColourId, Palette::panelOutline);
+
+    setColour (juce::ComboBox::backgroundColourId, Palette::panelRaised);
+    setColour (juce::ComboBox::outlineColourId, Palette::panelOutline);
+    setColour (juce::ComboBox::textColourId, Palette::textPrimary);
+    setColour (juce::ComboBox::arrowColourId, Palette::textMuted);
+    setColour (juce::PopupMenu::backgroundColourId, Palette::panelRaised);
+    setColour (juce::PopupMenu::textColourId, Palette::textPrimary);
+    setColour (juce::PopupMenu::highlightedTextColourId, Palette::background);
+
+    setColour (juce::Slider::textBoxTextColourId, Palette::textPrimary);
+    setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+    setColour (juce::Slider::rotarySliderOutlineColourId, Palette::grid);
+
     setAccent (Palette::defaultAccent);
 }
 
@@ -19,6 +33,68 @@ void NovaLookAndFeel::setAccent (juce::Colour newAccent)
     setColour (juce::Slider::thumbColourId, accent);
     setColour (juce::Slider::rotarySliderFillColourId, accent);
     setColour (juce::TextButton::buttonOnColourId, accent);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, accent);
+}
+
+void NovaLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                                        float pos, float startAngle, float endAngle, juce::Slider& slider)
+{
+    const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (6.0f);
+    const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+    const auto centre = bounds.getCentre();
+    const float trackWidth = juce::jmax (3.0f, radius * 0.12f);
+    const float arcRadius = radius - trackWidth * 0.5f;
+    const float angle = startAngle + pos * (endAngle - startAngle);
+
+    juce::Path track;
+    track.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, startAngle, endAngle, true);
+    g.setColour (Palette::grid);
+    g.strokePath (track, juce::PathStrokeType (trackWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    juce::Path value;
+    value.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, startAngle, angle, true);
+    const auto fill = slider.isEnabled() ? accent : Palette::textMuted;
+    g.setColour (fill);
+    g.strokePath (value, juce::PathStrokeType (trackWidth, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // Knob body + indicator
+    const float bodyRadius = arcRadius - trackWidth * 1.6f;
+    g.setColour (Palette::panelRaised);
+    g.fillEllipse (juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre));
+    g.setColour (Palette::panelOutline);
+    g.drawEllipse (juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre), 1.0f);
+
+    const auto tip = centre.getPointOnCircumference (bodyRadius * 0.78f, angle);
+    const auto from = centre.getPointOnCircumference (bodyRadius * 0.35f, angle);
+    g.setColour (Palette::textPrimary);
+    g.drawLine ({ from, tip }, juce::jmax (2.0f, trackWidth * 0.6f));
+}
+
+void NovaLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
+                                    int, int, int, int, juce::ComboBox& box)
+{
+    const auto bounds = juce::Rectangle<int> (0, 0, width, height).toFloat().reduced (0.5f);
+    g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (box.hasKeyboardFocus (true) ? accent : box.findColour (juce::ComboBox::outlineColourId));
+    g.drawRoundedRectangle (bounds, 6.0f, 1.0f);
+
+    const float arrowW = 8.0f, arrowH = 5.0f;
+    const float ax = static_cast<float> (width) - 16.0f, ay = static_cast<float> (height) * 0.5f;
+    juce::Path arrow;
+    arrow.addTriangle (ax - arrowW * 0.5f, ay - arrowH * 0.5f, ax + arrowW * 0.5f, ay - arrowH * 0.5f, ax, ay + arrowH * 0.5f);
+    g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+    g.fillPath (arrow);
+}
+
+juce::Font NovaLookAndFeel::getComboBoxFont (juce::ComboBox&)
+{
+    return juce::Font (juce::FontOptions (14.0f));
+}
+
+juce::Font NovaLookAndFeel::getPopupMenuFont()
+{
+    return juce::Font (juce::FontOptions (14.0f));
 }
 
 } // namespace novapitch
