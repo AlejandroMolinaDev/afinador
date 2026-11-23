@@ -17,6 +17,7 @@ add_executable(NovaPitchTests
     unit/TimeEditTests.cpp
     unit/TransitionTests.cpp
     unit/AuditTests.cpp
+    unit/FootprintTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )

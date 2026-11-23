@@ -42,7 +42,7 @@ public:
 
 private:
     juce::AbstractFifo fifo { kCapacity };
-    std::array<CaptureFrame, kCapacity> buffer {};
+    std::vector<CaptureFrame> buffer = std::vector<CaptureFrame> (static_cast<size_t> (kCapacity)); // heap: see PitchFrameFifo
 };
 
 /** Hands immutable objects (compiled CorrectionTracks, rendered time edits)

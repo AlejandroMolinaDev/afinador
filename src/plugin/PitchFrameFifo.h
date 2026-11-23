@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 
 #include <array>
+#include <vector>
 
 namespace novapitch
 {
@@ -57,7 +58,9 @@ public:
 
 private:
     juce::AbstractFifo fifo { kCapacity };
-    std::array<PitchFrame, kCapacity> buffer {};
+    // On the heap (allocated once, with the processor): keeps the processor object
+    // small enough for a stack (Windows threads have 1 MB).
+    std::vector<PitchFrame> buffer = std::vector<PitchFrame> (static_cast<size_t> (kCapacity));
 };
 
 } // namespace novapitch
