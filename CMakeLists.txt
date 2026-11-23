@@ -124,6 +124,7 @@ target_sources(NovaPitchDsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HarmonyEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/HarmonyEngine.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/MidiNoteState.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dsp/graph/CorrectionTrack.h
 )
 target_include_directories(NovaPitchDsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(NovaPitchDsp INTERFACE juce::juce_dsp signalsmith-stretch)
@@ -142,6 +143,9 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PresetManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/MidiLearn.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/MidiLearn.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphModel.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/graph/GraphRuntime.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LookAndFeel.cpp
@@ -153,6 +157,8 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/LabeledControls.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/VibratoDisplay.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/VibratoDisplay.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/GraphEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/GraphEditor.h
 )
 
 target_include_directories(NovaPitchCore INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)

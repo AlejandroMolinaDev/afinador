@@ -264,6 +264,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (makeFloat (ParamIDs::hBusWidth, "Armonías: ancho", 0.0f, 200.0f, 0.1f, 100.0f, "%",
                            [] (float v) { return juce::String (juce::roundToInt (v)) + " %"; }));
 
+    // ---- Phase 8 ------------------------------------------------------------
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::graphMode, 1 }, u8 ("Modo gráfico"), false));
+
     return layout;
 }
 

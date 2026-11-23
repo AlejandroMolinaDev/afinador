@@ -47,7 +47,9 @@ constexpr AccentOption kAccents[] = {
 };
 
 // Layout (base coordinates)
-const juce::Rectangle<int> kPresetBar     { 200, 26, 400, 28 };
+const juce::Rectangle<int> kModeSwitch    { 200, 26, 124, 28 };
+const juce::Rectangle<int> kPresetBar     { 334, 26, 306, 28 };
+const juce::Rectangle<int> kGraphBounds   { 20, 70, 720, 540 };
 const juce::Rectangle<int> kMeterBounds   { 20, 76, 470, 222 };
 const juce::Rectangle<int> kSidePanel     { 506, 76, 234, 222 };
 const juce::Rectangle<int> kTabBar        { 20, 310, 720, 28 };
@@ -253,6 +255,28 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
         content.addAndMakeVisible (c);
     refreshPresetBox();
 
+    // Auto / Graphical mode -------------------------------------------------------
+    autoButton.setButtonText ("Auto");
+    autoButton.setTooltip (u8 ("Modo automático: corrige en tiempo real según tonalidad y escala (o MIDI)."));
+    graphButton.setButtonText (u8 ("Gráfico"));
+    graphButton.setTooltip (u8 ("Modo gráfico: captura la afinación reproduciendo la pista en FL Studio y edita notas, "
+                                "líneas y curvas. Durante la reproducción manda lo dibujado; fuera de los objetos pasa la voz original."));
+    for (auto* b : { &autoButton, &graphButton })
+    {
+        b->setRadioGroupId (1003);
+        b->setClickingTogglesState (true);
+        b->setColour (juce::TextButton::buttonColourId, Palette::panelRaised);
+        b->setColour (juce::TextButton::textColourOffId, Palette::textMuted);
+        b->setColour (juce::TextButton::textColourOnId, Palette::background);
+        content.addAndMakeVisible (b);
+    }
+    autoButton.setConnectedEdges (juce::Button::ConnectedOnRight);
+    graphButton.setConnectedEdges (juce::Button::ConnectedOnLeft);
+    autoButton.onClick = [this] { if (autoButton.getToggleState()) setGraphMode (false); };
+    graphButton.onClick = [this] { if (graphButton.getToggleState()) setGraphMode (true); };
+    graphEditor = std::make_unique<GraphEditor> (p);
+    content.addChildComponent (*graphEditor);
+
     // MIDI Learn on every knob ---------------------------------------------------
     for (auto* k : allKnobs())
         k->onContextMenu = [this] (LabeledKnob& knob) { showKnobMenu (knob); };
@@ -264,6 +288,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
 
     meter.setAccent (lookAndFeel.getAccent());
     trace.setAccent (lookAndFeel.getAccent());
+    graphEditor->setAccent (lookAndFeel.getAccent());
 
     setResizable (true, true);
     setResizeLimits (kBaseWidth * 3 / 4, kBaseHeight * 3 / 4, kBaseWidth * 2, kBaseHeight * 2);
@@ -272,6 +297,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     setSize (kBaseWidth, kBaseHeight);
 
     footerText = buildFooterText();
+    updateView();
     startTimerHz (30);
 }
 
@@ -340,6 +366,8 @@ void PluginEditor::applyAccent (juce::Colour c)
     meter.setAccent (c);
     trace.setAccent (c);
     vibratoDisplay.setAccent (c);
+    if (graphEditor != nullptr)
+        graphEditor->setAccent (c);
     processor.getValueTreeState().state.setProperty (kAccentProperty, c.toString(), nullptr);
     sendLookAndFeelChange();
     repaint();
@@ -447,6 +475,43 @@ void PluginEditor::updateVoiceVisibility()
     }
 }
 
+void PluginEditor::setGraphMode (bool on)
+{
+    if (auto* param = processor.getValueTreeState().getParameter (ParamIDs::graphMode))
+    {
+        param->beginChangeGesture();
+        param->setValueNotifyingHost (on ? 1.0f : 0.0f);
+        param->endChangeGesture();
+    }
+    updateView();
+}
+
+void PluginEditor::updateView()
+{
+    const bool wantGraph = processor.getValueTreeState().getRawParameterValue (ParamIDs::graphMode)->load() > 0.5f;
+    autoButton.setToggleState (! wantGraph, juce::dontSendNotification);
+    graphButton.setToggleState (wantGraph, juce::dontSendNotification);
+    if (wantGraph == graphView && graphEditor->isVisible() == wantGraph)
+        return;
+    graphView = wantGraph;
+
+    meter.setVisible (! graphView);
+    trace.setVisible (! graphView);
+    for (auto& c : combos)
+        c->setVisible (! graphView);
+    for (auto& t : tabs)
+        t.setVisible (! graphView);
+    if (graphView)
+        for (auto& page : pages)
+            page.setVisible (false);
+    else
+        showPage (currentPage);
+    graphEditor->setVisible (graphView);
+    if (graphView)
+        graphEditor->refresh();
+    content.repaint();
+}
+
 void PluginEditor::showPage (Page page)
 {
     currentPage = page;
@@ -484,6 +549,10 @@ juce::String PluginEditor::buildFooterText() const
 
 void PluginEditor::timerCallback()
 {
+    updateView(); // follows host automation of "Modo gráfico"
+    if (graphView)
+        graphEditor->refresh();
+
     // Drain every pending pitch frame (lock-free, single consumer).
     auto& fifo = processor.getPitchFrameFifo();
     bool gotFrames = false;
@@ -579,6 +648,11 @@ void PluginEditor::Content::resized()
     owner.nextPreset.setBounds (presets.removeFromRight (26));
     presets.removeFromRight (4);
     owner.presetBox.setBounds (presets);
+
+    auto modeSwitch = kModeSwitch;
+    owner.autoButton.setBounds (modeSwitch.removeFromLeft (modeSwitch.getWidth() / 2));
+    owner.graphButton.setBounds (modeSwitch);
+    owner.graphEditor->setBounds (kGraphBounds);
 
     // Tabs
     auto bar = kTabBar;
@@ -680,7 +754,7 @@ void PluginEditor::Content::paint (juce::Graphics& g)
 
     // Host badge (FL Studio first)
     const auto badgeColour = owner.hostIsFlStudio ? Palette::ok : Palette::textMuted;
-    const auto badgeText = owner.hostIsFlStudio ? u8 ("FL Studio detectado") : owner.hostDescription;
+    const auto badgeText = owner.hostIsFlStudio ? u8 ("FL Studio") : owner.hostDescription.substring (0, 14);
     g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
     const float badgeWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), badgeText) + 24.0f;
     const auto badge = juce::Rectangle<float> (badgeWidth, 24.0f).withPosition (header.getRight() - badgeWidth, header.getCentreY() - 12.0f);
@@ -690,6 +764,14 @@ void PluginEditor::Content::paint (juce::Graphics& g)
     g.drawRoundedRectangle (badge, 12.0f, 1.0f);
     g.drawText (badgeText, badge, juce::Justification::centred);
 
+
+    if (owner.graphView)
+    {
+        g.setColour (Palette::textMuted.withAlpha (0.8f));
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawText (owner.footerText, kFooterBounds.toFloat(), juce::Justification::centredLeft);
+        return; // the graphical editor paints itself
+    }
 
     // Panel backgrounds -----------------------------------------------------------
     for (const auto& r : { kSidePanel.toFloat(), kPagePanel.toFloat() })

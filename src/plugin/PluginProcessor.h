@@ -15,6 +15,8 @@
 #include "plugin/Parameters.h"
 #include "plugin/PitchFrameFifo.h"
 #include "plugin/PresetManager.h"
+#include "plugin/graph/GraphModel.h"
+#include "plugin/graph/GraphRuntime.h"
 
 #include <array>
 #include <atomic>
@@ -128,6 +130,24 @@ public:
     /** Incremented (message thread) whenever MIDI mappings change: lets the editor refresh labels. */
     int getMidiMappingGeneration() const noexcept { return midiMappingGeneration.load(); }
 
+    //==========================================================================
+    // Graphical mode (phase 8). FL Studio has no ARA: the pitch curve is captured
+    // while the host plays ("capture by playback") and indexed by host time.
+    GraphModel& getGraphModel() noexcept { return graphModel; }
+    /** Starts/stops capturing the detected pitch while the host plays (message thread). */
+    void setGraphCapture (bool shouldCapture);
+    bool isGraphCapturing() const noexcept { return captureRequested.load(); }
+    /** Host timeline position of the last block and whether the host is playing. */
+    double getHostTimeSeconds() const noexcept { return hostTimeSeconds.load (std::memory_order_relaxed); }
+    bool isHostPlaying() const noexcept { return hostPlaying.load (std::memory_order_relaxed); }
+    /** Replaces the graph objects with notes from the captured curve, using the
+        current key / scale / note states (one undo step). Returns notes created. */
+    int importGraphFromAuto();
+    /** Message-thread housekeeping of the graphical mode: drains the capture
+        FIFO, commits capture passes, frees retired tracks. Called by the timer
+        (public so tests can run it without a message loop). */
+    void processGraphMessages();
+
 private:
     struct ParamPointers
     {
@@ -160,6 +180,7 @@ private:
         std::atomic<float>* vibVariation = nullptr;
         std::atomic<float>* vibAmpMod = nullptr;
         std::atomic<float>* vibFormantMod = nullptr;
+        std::atomic<float>* graphMode = nullptr;
     };
 
     /** Reads all parameters and pushes them into the DSP objects (audio thread). */
@@ -214,6 +235,32 @@ private:
     MidiLearn midiLearn { *this };
     std::unique_ptr<PresetManager> presetManager;
     std::atomic<int> midiMappingGeneration { 0 };
+
+    // Graphical mode ------------------------------------------------------------
+    void readPlayHead() noexcept;
+    void publishGraphTrack();
+
+    juce::UndoManager graphUndo;
+    GraphModel graphModel { graphUndo };   // message thread
+    TrackPublisher trackPublisher;
+    CaptureFifo captureFifo;
+    std::atomic<bool> captureRequested { false };
+    std::atomic<double> hostTimeSeconds { 0.0 };
+    std::atomic<bool> hostPlaying { false };
+    std::atomic<uint64_t> audioBlocksDone { 0 };
+    // audio thread
+    const dsp::CorrectionTrack* blockTrack = nullptr;
+    bool graphModeOn = false;
+    bool blockPlaying = false;
+    double blockHostTime = 0.0;
+    double chunkHostTime = 0.0;
+    int64_t chunkStartIndex = 0;
+    double lastCaptureTime = -1.0e9;
+    bool lastCaptureVoiced = false;
+    dsp::CorrectionCurve::Settings autoCurveSettings;
+    // message thread
+    bool wasCapturing = false, wasHostPlaying = false;
+    double lastDrainedTime = -1.0e9;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NovaPitchProcessor)
 };

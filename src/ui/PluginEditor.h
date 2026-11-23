@@ -5,6 +5,7 @@
 
 #include "plugin/PitchFrameFifo.h"
 #include "ui/LookAndFeel.h"
+#include "ui/components/GraphEditor.h"
 #include "ui/components/LabeledControls.h"
 #include "ui/components/PitchTrace.h"
 #include "ui/components/TuningMeter.h"
@@ -53,6 +54,9 @@ private:
     void timerCallback() override;
     juce::String buildFooterText() const;
     void showPage (Page);
+    /** Shows the automatic layout or the graphical editor, following the graphMode parameter. */
+    void updateView();
+    void setGraphMode (bool);
 
     // Presets / settings
     void refreshPresetBox();
@@ -109,6 +113,11 @@ private:
     juce::String shownPresetName;
     int shownMidiGeneration = -1;
     int shownLearning = -2;
+
+    // Auto / Graphical mode (phase 8)
+    juce::TextButton autoButton, graphButton;
+    std::unique_ptr<GraphEditor> graphEditor;
+    bool graphView = false;
 
     juce::String hostDescription;
     bool hostIsFlStudio = false;

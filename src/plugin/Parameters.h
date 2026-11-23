@@ -55,6 +55,7 @@ inline constexpr const char* hBusAttack = "hBusAttack";
 inline constexpr const char* hBusRelease = "hBusRelease";
 inline constexpr const char* hBusGate = "hBusGate";
 inline constexpr const char* hBusWidth = "hBusWidth";
+inline constexpr const char* graphMode = "graphMode";           // phase 8
 
 /** Harmony voice parameters, voice = 1..4: "hvMode1", "hvDegrees1", ... */
 juce::String harmonyVoice (const char* field, int voice);

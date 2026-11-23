@@ -108,6 +108,54 @@ TEST_CASE ("processBlock does not allocate in any mode", "[realtime]")
     CHECK (allocations == 0);
 }
 
+TEST_CASE ("processBlock does not allocate in graphical mode (playback + capture)", "[realtime][graph]")
+{
+    JuceFixture fixture;
+    const double sr = 48000.0;
+    NovaPitchProcessor p;
+    TestPlayHead playHead;
+    playHead.sampleRate = sr;
+    p.setPlayHead (&playHead);
+
+    auto& model = p.getGraphModel();
+    model.addNote (0.0, 0.5, 58.0f);
+    model.addLine (0.5, 0.9, 58.0f, 63.0f);
+    model.addCurve ({ { 0.9, 63.0f }, { 1.0, 63.5f }, { 1.2, 62.0f } });
+    setParam (p, ParamIDs::graphMode, 1.0f);
+    setParam (p, ParamIDs::harmonyVoice ("hvMode", 1), 1.0f);
+    p.setGraphCapture (true);
+    p.prepareToPlay (sr, 512);
+
+    const auto sig = signals::concat ({ signals::sawtooth (233.0, sr, 0.7), signals::sawtooth (311.0, sr, 0.7) });
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (5u);
+    std::uniform_int_distribution<int> sizes (1, 512);
+    auto run = [&] (size_t from, size_t to) {
+        for (size_t pos = from; pos < to;)
+        {
+            const int n = static_cast<int> (std::min<size_t> (static_cast<size_t> (sizes (rng)), to - pos));
+            buffer.setSize (2, n, false, false, true);
+            buffer.copyFrom (0, 0, sig.data() + pos, n);
+            buffer.copyFrom (1, 0, sig.data() + pos, n);
+            playHead.timeInSamples = static_cast<int64_t> (pos);
+            p.processBlock (buffer, midi);
+            pos += static_cast<size_t> (n);
+        }
+    };
+
+    run (0, sig.size() / 4);
+    long allocations = 0;
+    {
+        AllocationGuard guard;
+        run (sig.size() / 4, sig.size());
+        allocations = guard.count();
+    }
+    INFO (allocations << " allocations on the audio thread");
+    CHECK (allocations == 0);
+    p.setPlayHead (nullptr);
+}
+
 TEST_CASE ("The allocation counter detects allocations (self-test)", "[realtime]")
 {
     long allocations = 0;

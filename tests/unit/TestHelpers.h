@@ -38,6 +38,24 @@ inline void setParam (NovaPitchProcessor& p, const juce::String& id, float value
     param->setValueNotifyingHost (param->convertTo0to1 (value));
 }
 
+/** Host transport for tests: FL-like play head with a sample position. */
+struct TestPlayHead final : juce::AudioPlayHead
+{
+    int64_t timeInSamples = 0;
+    double sampleRate = 48000.0;
+    bool playing = true;
+
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setIsPlaying (playing);
+        info.setTimeInSamples (timeInSamples);
+        info.setTimeInSeconds (static_cast<double> (timeInSamples) / sampleRate);
+        info.setBpm (120.0);
+        return info;
+    }
+};
+
 inline void fillWithNoise (juce::AudioBuffer<float>& buffer, int numChannels, uint32_t seed)
 {
     std::mt19937 rng (seed);

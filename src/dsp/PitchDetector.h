@@ -98,6 +98,9 @@ public:
         return static_cast<int> ((0.5 * frameLength + 0.5 * (config.medianLength - 1) * hopSize) * decimation);
     }
 
+    /** Input samples consumed since prepare()/reset() (same counter as PitchEstimate::sampleIndex). */
+    int64_t getInputSamplesSeen() const noexcept { return inputSamplesSeen; }
+
     // Exposed for unit tests --------------------------------------------------
     float getYinThreshold() const noexcept { return yinThreshold; }
     /** Runs the raw (non-smoothed) analysis on an arbitrary analysis-rate buffer

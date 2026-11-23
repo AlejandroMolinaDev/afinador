@@ -108,5 +108,46 @@ int main()
         });
         std::printf ("  %6.1f kHz: %6.2f%% of one core\n", sr / 1000.0, pct);
     }
+
+    // Graphical mode: host transport + 200 note objects + capture running.
+    std::printf ("\nTracking, graphical mode (200 notes, transport playing, capture on), stereo\n");
+    struct BenchPlayHead final : juce::AudioPlayHead
+    {
+        int64_t samples = 0;
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo info;
+            info.setIsPlaying (true);
+            info.setTimeInSamples (samples);
+            return info;
+        }
+    };
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+    {
+        NovaPitchProcessor proc;
+        BenchPlayHead head;
+        proc.setPlayHead (&head);
+        for (int n = 0; n < 200; ++n)
+            proc.getGraphModel().addNote (n * 0.05, n * 0.05 + 0.04, 57.0f + static_cast<float> (n % 5));
+        if (auto* param = proc.getValueTreeState().getParameter (ParamIDs::graphMode))
+            param->setValueNotifyingHost (1.0f);
+        proc.setGraphCapture (true);
+        proc.prepareToPlay (sr, block);
+        const auto sig = benchSignal (sr, seconds);
+        juce::AudioBuffer<float> buffer (2, block);
+        juce::MidiBuffer midi;
+        const double pct = percentOfCore (seconds, [&] {
+            for (size_t pos = 0; pos + block <= sig.size(); pos += block)
+            {
+                head.samples = static_cast<int64_t> (pos);
+                buffer.copyFrom (0, 0, sig.data() + pos, block);
+                buffer.copyFrom (1, 0, sig.data() + pos, block);
+                proc.processBlock (buffer, midi);
+            }
+        });
+        proc.processGraphMessages();
+        proc.setPlayHead (nullptr);
+        std::printf ("  %6.1f kHz: %6.2f%% of one core\n", sr / 1000.0, pct);
+    }
     return 0;
 }

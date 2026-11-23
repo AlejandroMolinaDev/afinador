@@ -96,9 +96,13 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.busRelease = get (ParamIDs::hBusRelease);
     params.busGate = get (ParamIDs::hBusGate);
     params.busWidth = get (ParamIDs::hBusWidth);
+    params.graphMode = get (ParamIDs::graphMode);
 
     pitchDetector.setListener (this);
     presetManager = std::make_unique<PresetManager> (apvts);
+
+    graphModel.onChanged = [this] { publishGraphTrack(); };
+    graphModel.bind (apvts.state);
 
     // Report the default mode's latency from the start (hosts query it before prepare).
     setLatencySamples (latencyForMode (kDefaultQualityMode, 44100.0));
@@ -168,6 +172,8 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     hqShifter.reset();
     harmony.reset();
     midiNotes.allOff();
+    trackPublisher.collectAll(); // the audio thread is not running here
+    lastCaptureTime = -1.0e9;
 
     // prepareToPlay runs outside the audio callback: report latency right away.
     const int latency = modeLatency[static_cast<size_t> (blockMode)];
@@ -176,7 +182,10 @@ void NovaPitchProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
         setLatencySamples (latency); // FL Studio uses this for plugin delay compensation
 }
 
-void NovaPitchProcessor::releaseResources() {}
+void NovaPitchProcessor::releaseResources()
+{
+    trackPublisher.collectAll();
+}
 
 void NovaPitchProcessor::reset()
 {
@@ -202,6 +211,80 @@ void NovaPitchProcessor::timerCallback()
         ++midiMappingGeneration;
 
     applyLearnedScale();
+    processGraphMessages();
+}
+
+//==============================================================================
+void NovaPitchProcessor::publishGraphTrack()
+{
+    trackPublisher.publish (graphModel.compile(), audioBlocksDone.load());
+}
+
+void NovaPitchProcessor::setGraphCapture (bool shouldCapture)
+{
+    captureRequested.store (shouldCapture);
+    if (! shouldCapture)
+        processGraphMessages(); // drain + commit the pass now
+}
+
+void NovaPitchProcessor::processGraphMessages()
+{
+    std::array<CaptureFrame, 256> frames {};
+    for (int n; (n = captureFifo.pop (frames.data(), static_cast<int> (frames.size()))) > 0;)
+        for (int i = 0; i < n; ++i)
+        {
+            const auto& f = frames[static_cast<size_t> (i)];
+            if (f.time < lastDrainedTime - 0.25)
+                graphModel.commitCapture(); // the host jumped back (loop / relocation): new pass
+            graphModel.appendCaptured (&f, 1);
+            lastDrainedTime = f.time;
+        }
+
+    const bool capturing = captureRequested.load();
+    const bool playing = hostPlaying.load();
+    if ((wasCapturing && ! capturing) || (wasHostPlaying && ! playing))
+    {
+        graphModel.commitCapture();
+        lastDrainedTime = -1.0e9;
+    }
+    wasCapturing = capturing;
+    wasHostPlaying = playing;
+
+    trackPublisher.collect (audioBlocksDone.load());
+}
+
+int NovaPitchProcessor::importGraphFromAuto()
+{
+    dsp::NoteMapper mapper;
+    mapper.setKeyAndScale (choiceIndex (params.key), dsp::scaleTypeFromIndex (choiceIndex (params.scale)));
+    for (int pc = 0; pc < 12; ++pc)
+        mapper.setNoteState (pc, dsp::noteStateFromIndex (choiceIndex (params.noteStates[static_cast<size_t> (pc)])));
+    return graphModel.importFromAuto (mapper);
+}
+
+void NovaPitchProcessor::readPlayHead() noexcept
+{
+    blockPlaying = false;
+    if (auto* host = getPlayHead())
+    {
+        if (const auto position = host->getPosition(); position.hasValue() && position->getIsPlaying())
+        {
+            if (const auto samples = position->getTimeInSamples(); samples.hasValue())
+            {
+                blockHostTime = static_cast<double> (*samples) / inputSampleRate;
+                blockPlaying = true;
+            }
+            else if (const auto seconds = position->getTimeInSeconds(); seconds.hasValue())
+            {
+                blockHostTime = *seconds;
+                blockPlaying = true;
+            }
+        }
+    }
+    hostPlaying.store (blockPlaying, std::memory_order_relaxed);
+    if (blockPlaying)
+        hostTimeSeconds.store (blockHostTime, std::memory_order_relaxed);
+    blockTrack = trackPublisher.acquire();
 }
 
 void NovaPitchProcessor::applyLearnedScale()
@@ -260,6 +343,8 @@ void NovaPitchProcessor::updateDspFromParameters() noexcept
         s.naturalHold = params.naturalHold->load (std::memory_order_relaxed) / 100.0f;
     }
     correctionCurve.setSettings (s);
+    autoCurveSettings = s;
+    graphModeOn = params.graphMode->load (std::memory_order_relaxed) > 0.5f;
 
     // Vibrato: Vintage flattens it like the classic effect.
     vibratoKeep = blockMode == QualityMode::Vintage ? 0.0f : params.vibratoPreserve->load (std::memory_order_relaxed) / 100.0f;
@@ -347,8 +432,47 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     std::array<int, 16> held {};
     const int numHeld = midiNotes.heldNotes (held);
 
+    // Host-timeline time of the analysed audio (capture and graphical playback).
+    const double frameTime = chunkHostTime
+                             + static_cast<double> (e.sampleIndex - chunkStartIndex - pitchDetector.getDetectionLagSamples())
+                                   / inputSampleRate;
+    if (blockPlaying && captureRequested.load (std::memory_order_relaxed)
+        && (frameTime - lastCaptureTime >= GraphModel::kFrameSeconds - 1.0e-4 || frameTime < lastCaptureTime
+            || voiced != lastCaptureVoiced))
+    {
+        captureFifo.push ({ frameTime, voiced ? detectedMidi : -1.0f, e.rmsDb });
+        lastCaptureTime = frameTime;
+        lastCaptureVoiced = voiced;
+    }
+
+    // Graphical mode: the objects under the playhead decide; elsewhere (or when
+    // the host is stopped) the original voice passes uncorrected.
+    dsp::CorrectionTrack::Result graph;
+    const bool graphOverride = graphModeOn && blockPlaying && blockTrack != nullptr && blockTrack->lookup (frameTime, graph);
+    float frameVibratoKeep = vibratoKeep;
+    float graphFormant = 1.0f;
+
     dsp::NoteTarget target;
-    if (voiced && midiTargetOn && numHeld > 0)
+    if (graphModeOn)
+    {
+        auto cs = autoCurveSettings;
+        if (graphOverride && voiced)
+        {
+            const int note = static_cast<int> (std::lround (graph.pitch));
+            target = { true, true, note, graph.pitch };
+            cs.toleranceCents = 0.0f; // objects are explicit decisions
+            if (graph.retuneMs >= 0.0f)
+                cs.retuneMs = graph.retuneMs;
+            if (graph.kind != dsp::CorrectionTrack::Kind::Note)
+                cs.naturalHold = 0.0f;
+            if (graph.vibratoKeep >= 0.0f)
+                frameVibratoKeep = graph.vibratoKeep;
+            graphFormant = std::exp2 (graph.formantSt / 12.0f);
+        }
+        correctionCurve.setSettings (cs);
+        noteMapper.reset();
+    }
+    else if (voiced && midiTargetOn && numHeld > 0)
     {
         // MIDI Target: the held note (any octave) closest to the sung pitch.
         float best = 1.0e9f;
@@ -370,7 +494,7 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
 
     const float correction = correctionCurve.process (voiced, centreMidi, target);
     const bool correcting = target.hasTarget && target.correct;
-    const float vibratoScale = correcting ? (vibratoKeep - 1.0f) * vib.vibratoCents : 0.0f;
+    const float vibratoScale = correcting ? (frameVibratoKeep - 1.0f) * vib.vibratoCents : 0.0f;
 
     // Artificial vibrato on sustained notes (restarts on every new note).
     const bool noteStarted = voiced && (! wasVoiced || target.note != synthNote);
@@ -381,7 +505,7 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
 
     const float totalCents = correction + vibratoScale + synth.pitchCents + 100.0f * transposeSemitones;
     const float ratio = std::exp2 (totalCents / 1200.0f);
-    const float formant = formantStaticFactor * synth.formantFactor;
+    const float formant = formantStaticFactor * synth.formantFactor * graphFormant;
     if (hqActive)
     {
         hqShifter.setControl (voiced, e.frequencyHz, ratio);
@@ -487,6 +611,8 @@ void NovaPitchProcessor::runChain (juce::AudioBuffer<float>& buffer, bool bypass
 
         if (! bypassed)
         {
+            chunkHostTime = blockHostTime + static_cast<double> (start) / inputSampleRate;
+            chunkStartIndex = pitchDetector.getInputSamplesSeen();
             pitchDetector.process (monoScratch.data(), n); // -> pitchFrameReady -> engine control
         }
         else
@@ -564,6 +690,8 @@ void NovaPitchProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     if (numSamples <= 0)
         return;
 
+    readPlayHead();
+
     diagnostics.lastBlockSize.store (numSamples, std::memory_order_relaxed);
     updateMin (diagnostics.minBlockSize, numSamples);
     updateMax (diagnostics.maxBlockSize, numSamples);
@@ -581,6 +709,7 @@ void NovaPitchProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     }
     updateDspFromParameters();
     runChain (buffer, false);
+    audioBlocksDone.fetch_add (1);
 }
 
 void NovaPitchProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -591,6 +720,7 @@ void NovaPitchProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer,
 
     updateDspFromParameters();
     runChain (buffer, true);
+    audioBlocksDone.fetch_add (1);
 }
 
 //==============================================================================
@@ -623,6 +753,7 @@ void NovaPitchProcessor::setStateInformation (const void* data, int sizeInBytes)
 
         apvts.replaceState (migrateState (juce::ValueTree::fromXml (*xml)));
         midiLearn.fromValueTree (apvts.state.getChildWithName (MidiLearn::kStateTag));
+        graphModel.bind (apvts.state); // recompiles and publishes the correction track
     }
 }
 

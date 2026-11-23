@@ -42,6 +42,21 @@ std::vector<float> phrase (double sr)
     return voice;
 }
 
+/** Minimal transport (FL plays from bar 1). */
+struct SnapshotPlayHead final : juce::AudioPlayHead
+{
+    int64_t samples = 0;
+    bool playing = true;
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setIsPlaying (playing);
+        info.setTimeInSamples (samples);
+        info.setTimeInSeconds (static_cast<double> (samples) / 48000.0);
+        return info;
+    }
+};
+
 bool writePng (const juce::Image& image, const juce::File& file)
 {
     file.deleteFile();
@@ -135,6 +150,60 @@ int main (int argc, char* argv[])
             std::cout << "tab not found: " << slug << std::endl;
             ok = false;
         }
+    }
+
+    // Graphical mode: capture the phrase by "playing" it, import, edit, then play
+    // again up to the middle so the playhead is visible.
+    if (auto* button = findButton (*editor, juce::String::fromUTF8 ("Gráfico")))
+    {
+        button->triggerClick();
+        SnapshotPlayHead head;
+        proc.setPlayHead (&head);
+        auto& state = proc.getValueTreeState();
+        if (auto* scale = state.getParameter ("scale"))
+            scale->setValueNotifyingHost (scale->convertTo0to1 (0.0f)); // C major
+        auto playFrom = [&] (size_t from, size_t to) {
+            for (size_t p = from; p + 256 <= to; p += 256)
+            {
+                head.samples = static_cast<int64_t> (p);
+                buffer.copyFrom (0, 0, sig.data() + p, 256);
+                buffer.copyFrom (1, 0, sig.data() + p, 256);
+                proc.processBlock (buffer, midi);
+                if ((p / 256) % 6 == 0)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            }
+        };
+        proc.setGraphCapture (true);
+        playFrom (0, sig.size());
+        proc.setGraphCapture (false);
+        proc.importGraphFromAuto();
+
+        auto& model = proc.getGraphModel();
+        model.beginEdit();
+        const auto objects = model.getObjects();
+        if (objects.getNumChildren() > 0) // the flat final note goes up to the D above
+            model.setObjectProperty (objects.getChild (objects.getNumChildren() - 1), juce::Identifier ("pitch"), 62.0f);
+        model.addLine (1.42, 1.62, 60.0f, 64.0f);
+        model.addCurve ({ { 3.70, 62.0f }, { 3.74, 62.6f }, { 3.78, 63.1f } });
+        if (auto* graphMode = state.getParameter ("graphMode"))
+            graphMode->setValueNotifyingHost (1.0f);
+
+        playFrom (0, static_cast<size_t> (sr * 2.2));
+        head.samples = static_cast<int64_t> (sr * 2.2);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+        for (const float scale : { 1.0f, 2.0f })
+        {
+            const auto file = outDir.getChildFile ("editor-graph-" + juce::String (juce::roundToInt (scale * 100)) + ".png");
+            const bool written = writePng (editor->createComponentSnapshot (editor->getLocalBounds(), true, scale), file);
+            std::cout << (written ? "wrote " : "FAILED ") << file.getFullPathName() << std::endl;
+            ok = ok && written;
+        }
+        proc.setPlayHead (nullptr);
+    }
+    else
+    {
+        std::cout << "graph mode button not found" << std::endl;
+        ok = false;
     }
 
     editor.reset();

@@ -11,7 +11,7 @@ Estado por fases (ver especificación original, sección 11).
 | 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ✅ Hecho (prueba manual en FL pendiente) |
 | 6 | UI completa + presets + redimensionado + MIDI Learn | ✅ Hecho (pendiente tu revisión visual y prueba en FL) |
 | 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ✅ Hecho (prueba manual en FL pendiente) |
-| 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ⏳ |
+| 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ✅ Hecho (prueba manual en FL pendiente) |
 | 9 | Corrección temporal, detector de tonalidad + sync de instancias, ARA2, AAX, Linux | ⏳ |
 | 10 | Instaladores (Inno Setup / .pkg firmado y notarizado), guía de usuario | ⏳ |
 
@@ -70,6 +70,17 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] CPU: las voces de armonía comparten el análisis de f0 pero cada una marca sus propias épocas; compartir las épocas de la voz principal ahorraría ~30 % por voz.
 - [ ] Armonías en modo HQ usan PSOLA (alineado con la latencia de HQ); un modo HQ para las voces costaría ~5 % de CPU por voz.
 - [ ] Asignación de voces en modo MIDI: hoy voz i = i-ésima nota más grave; opción de "nota más cercana" para voice leading.
+
+### Fase 8
+- [ ] Prueba en FL (Windows y Mac): captura, importar, editar, bucle, guardar/reabrir — `docs/TESTING_FL.md`, sección Fase 8.
+- [ ] **Alineación con el PDC de FL**: comprobar si capturar en un modo (p. ej. Tracking, 10 ms) y reproducir en otro (HQ, 100 ms) desplaza los objetos. Si FL cambia la posición reportada con la latencia, guardar la latencia de la captura y compensarla.
+- [ ] Los objetos se guardan en segundos de la línea de tiempo: si cambias el tempo del proyecto o mueves el clip de audio, hay que volver a capturar. Opción: anclar en PPQ (tiempo musical) o al clip.
+- [ ] Captura del audio (no solo de la afinación) para dibujar la forma de onda y como base de la corrección temporal (Fase 9).
+- [ ] Rejilla en compases/tiempos (BPM del host) y ajuste a la rejilla; hoy la regla es en segundos.
+- [ ] Copiar/pegar objetos, mover con flechas, cuantizar notas al inicio/fin de la nota detectada.
+- [ ] Dibujar la curva de salida prevista (captura + corrección) sobre la curva capturada.
+- [ ] Atajos de teclado en FL: FL puede quedarse con algunas teclas si la ventana del plugin no tiene el foco; los botones de la barra cubren todas las acciones.
+- [ ] Comprimir la curva capturada en el estado (hoy ~1,3 MB por cada 10 min de captura en el .flp).
 
 ### Fase 9
 - [ ] ARA SDK 2.3.0 (compatible con JUCE 8.0.13+).

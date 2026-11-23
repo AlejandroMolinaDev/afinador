@@ -300,3 +300,68 @@ Live 1.9 % · Tracking 1.9 % · HQ 5.8 % · Vintage 1.8 % (vibrato analysis is n
   and mute silent, 0 allocations with 4 voices and MIDI chords toggling.
 - CPU (Linux container, 48 kHz, 128-sample blocks): Tracking lead 1.9 %, + 4 voices 4.1 % (~0.55 % per voice).
   Each voice currently tracks epochs itself; sharing the lead's epochs is a possible optimisation (ROADMAP).
+
+## Phase 8 — graphical mode without ARA
+
+FL Studio has no ARA, so the graphical mode works by **capture by playback**: the plugin records the
+detected pitch while the host plays and indexes it by the host timeline.
+
+### Host time
+- Per block: `getPlayHead()->getPosition()` → `isPlaying` and `timeInSamples / sampleRate` (fallback
+  `timeInSeconds`). The detector's frames carry the input sample counter, so a frame's timeline time is
+  `blockTime + (frameSample − chunkStart − detectionLag) / fs`: the time of the analysed audio, not of the
+  moment the estimate was produced.
+- Capture and playback use the same timebase, so any constant offset the host applies to the reported
+  position cancels out. Open question for the manual FL test: whether FL's PDC changes the reported position
+  when the plugin latency changes (capture in Tracking, play in HQ). If it does, store the capture latency
+  and compensate (ROADMAP).
+
+### Capture
+- While "Capturar" is on and the host plays, the audio thread pushes `CaptureFrame {time, midi, rmsDb}`
+  (16 bytes) into a lock-free SPSC FIFO, decimated to one frame per 10 ms (plus every voicing change).
+  The processor's 30 Hz message-thread timer drains it into the model.
+- A capture pass ends when capture is switched off, the transport stops or the position jumps back
+  (loop / relocation). On commit, the pass **replaces the captured data in its own time range** (± half a
+  frame): re-capturing a section works like a punch-in.
+- Stored in the project as binary (`Graph@captured`, base64 in the XML): 1.6 kB per second of capture
+  (~1.3 MB per 10 minutes in the .flp).
+
+### Objects and model (`plugin/graph/GraphModel`)
+- `Graph` child of the plugin state tree: `Note {start, end, pitch, retuneMs, vibratoKeep, formantSt}`,
+  `Line {start, end, pitch, endPitch}`, `Curve {start, end, points}`; times in seconds on the host timeline,
+  pitches as fractional MIDI notes (relative to the A4 reference). Stable integer ids for the UI selection.
+- Every edit goes through a `juce::UndoManager` (one transaction per gesture; ValueTree coalesces drags).
+- **Import from automatic**: the captured curve is smoothed (centred ±40 ms mean of voiced frames, so
+  vibrato and jitter don't split notes) and mapped with a `NoteMapper` configured with the current key,
+  scale and note states (its hysteresis applies); runs of the same target ≥ 80 ms become notes, gaps
+  > 50 ms or unvoiced frames end a run; "Ignore" notes produce no object (the original passes). One undo step.
+
+### Compiled track and publication (`dsp/graph/CorrectionTrack.h`, `plugin/graph/GraphRuntime.h`)
+- Each change recompiles the objects into an immutable `CorrectionTrack` (segments sorted by start; where
+  objects overlap, the later start wins; curve points in one array). `lookup(t)` is a binary search, no
+  allocation.
+- Published by swapping an atomic pointer (message thread). The audio thread loads it once per block. The
+  previous track goes to a graveyard and is deleted only after the audio thread has finished two more
+  blocks (a block that started after the swap has completed), or in `prepareToPlay` / `releaseResources`.
+  The audio thread never allocates, frees or locks.
+
+### Playback (processor, per analysis frame)
+- `graphMode` on + transport playing + an object at the frame's time → the object decides the target:
+  - Note: target = note pitch; speed = per-note value or the global "Velocidad"; natural hold global;
+    vibrato kept = per-note or global; extra formant shift per note.
+  - Line / Curve: target = drawn pitch, followed exactly (speed 0, vibrato 0, no natural hold).
+  - Tolerance is ignored (objects are explicit decisions).
+- No object at that time, or transport stopped: **no correction** (original voice, still delayed by the
+  latency). MIDI Target and the NoteMapper are not used in graphical mode.
+- The vibrato split, formants, transposition, harmonies and engines (PSOLA/HQ) work as in automatic mode.
+
+### Measured
+- End to end (unit test with a simulated play head): A3 +30 c captured → import gives one A3 note → edited
+  to B3 and shortened to 0.8 s → playback: < 5 c from B3 inside the note, < 5 c from the input after it;
+  transport stopped: input pitch; save → new instance → same result.
+- Binary (host test, VST3 through JUCE hosting): a B3 note written into the project state → play
+  0.4 c, loop 0.0 c, stopped 0.2 c from the input, reopened 0.4 c.
+- 0 allocations in processBlock with graph mode, capture on and lines/curves/notes.
+- CPU (Linux container, 128-sample blocks, 200 notes, capture on): 1.8 % / 1.9 % / 2.4 % at
+  44.1 / 48 / 96 kHz — the same as Tracking alone.
+

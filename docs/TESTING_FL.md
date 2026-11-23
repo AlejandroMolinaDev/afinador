@@ -146,5 +146,27 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 71 | Humanizar, panorama, mute/solo y bus (EQ, gate, ancho) suenan como se espera | | |
 | 72 | CPU con 4 voces a 48 kHz (*Performance monitor*): anotar % | | |
 
+## Fase 8 — Modo gráfico (sin ARA)
+
+> Automático en CI: pista compilada (notas, líneas, curvas, huecos), edición con deshacer/rehacer, capturas que se sustituyen por tramos, importación desde automático (vibrato no parte notas), liberación segura de pistas, prueba de extremo a extremo con un transporte simulado (capturar → importar → editar → reproducir → guardar → reabrir) y, sobre el binario VST3, una nota guardada en el proyecto que se aplica al reproducir, en bucle, con el transporte parado y tras reabrir. 0 asignaciones en tiempo real con el modo gráfico.
+
+**Flujo en FL Studio:** botón **Gráfico** (cabecera) → **● Capturar** → reproduce la canción (o el patrón) → la curva aparece en rojo y queda en gris al parar → **Importar desde automático** → edita → reproduce: manda lo dibujado; fuera de los objetos y con el transporte parado pasa la voz original.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 73 | **Auto / Gráfico** cambia la vista; el parámetro *Modo gráfico* es automatizable y la vista lo sigue | | |
+| 74 | **Capturar** + reproducir: la curva se dibuja durante la reproducción y la vista sigue al cursor (*Seguir*) | | |
+| 75 | **Importar desde automático**: notas en la tonalidad/escala actual; *Deshacer* / *Rehacer* | | |
+| 76 | Editar: mover una nota un semitono (se oye), cambiar su duración por los bordes, *Dividir*, *Unir*, borrar con clic derecho | | |
+| 77 | Herramientas **Línea** y **Curva**: el tono de salida sigue lo dibujado | | |
+| 78 | Inspector: velocidad, vibrato y formante por nota (punto amarillo en la nota) | | |
+| 79 | **Bucle** de patrón/canción: la corrección queda alineada en cada vuelta | | |
+| 80 | **Alineación**: capturar en Tracking y reproducir en HQ (y al revés). ¿Se desplazan los objetos? Anotar el desfase si lo hay | | |
+| 81 | Volver a capturar solo un tramo (punch): se sustituye solo ese tramo | | |
+| 82 | Guardar el proyecto, cerrar FL, reabrir: objetos y curva intactos. Anotar el tamaño del .flp | | |
+| 83 | Atajos con la ventana del plugin enfocada: Supr, Ctrl/Cmd+Z, Ctrl/Cmd+Mayús+Z, Ctrl/Cmd+A, 1–6. ¿FL intercepta alguno? | | |
+| 84 | Rueda: tono · Mayús+rueda: tiempo · Ctrl/Cmd+rueda: zoom · pinza en trackpad (Mac) | | |
+| 85 | Varias pistas de voz con NovaPitch en modo gráfico a la vez | | |
+
 ## Notas / incidencias encontradas
 - 

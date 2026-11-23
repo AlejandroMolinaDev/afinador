@@ -183,6 +183,135 @@ int measureLatency (juce::AudioPluginInstance& p, double sr, int block)
     return peak > 0.1f ? peakIndex - impulseAt : -1;
 }
 
+/** Fundamental of a periodic segment: normalised autocorrelation, first peak
+    within 90 % of the best one (avoids octave-down picks). */
+double estimateHz (const std::vector<float>& x, size_t from, size_t length, double sr)
+{
+    const int minLag = static_cast<int> (sr / 800.0), maxLag = static_cast<int> (sr / 80.0);
+    std::vector<double> r (static_cast<size_t> (maxLag + 2), 0.0);
+    const size_t n = length - static_cast<size_t> (maxLag) - 2;
+    double best = 0.0;
+    for (int lag = minLag; lag <= maxLag + 1; ++lag)
+    {
+        double xy = 0.0, xx = 0.0, yy = 0.0;
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double a = x[from + i], b = x[from + i + static_cast<size_t> (lag)];
+            xy += a * b;
+            xx += a * a;
+            yy += b * b;
+        }
+        r[static_cast<size_t> (lag)] = xy / std::sqrt (xx * yy + 1.0e-12);
+        best = std::max (best, r[static_cast<size_t> (lag)]);
+    }
+    for (int lag = minLag + 1; lag <= maxLag; ++lag)
+    {
+        const double a = r[static_cast<size_t> (lag - 1)], b = r[static_cast<size_t> (lag)], c = r[static_cast<size_t> (lag + 1)];
+        if (b >= 0.9 * best && b >= a && b >= c)
+        {
+            const double denom = a - 2.0 * b + c;
+            const double offset = std::abs (denom) > 1.0e-12 ? 0.5 * (a - c) / denom : 0.0;
+            return sr / (lag + offset);
+        }
+    }
+    return 0.0;
+}
+
+/** FL-like transport for the graphical mode. */
+struct Transport final : juce::AudioPlayHead
+{
+    int64_t samples = 0;
+    double sampleRate = 48000.0;
+    bool playing = true;
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setIsPlaying (playing);
+        info.setTimeInSamples (samples);
+        info.setTimeInSeconds (static_cast<double> (samples) / sampleRate);
+        info.setBpm (120.0);
+        return info;
+    }
+};
+
+/** Plays `signal` with the transport running from 0 (or stopped); returns channel 0. */
+std::vector<float> playWithTransport (juce::AudioPluginInstance& p, Transport& t, const std::vector<float>& signal, int block)
+{
+    const int numCh = juce::jmax (p.getTotalNumInputChannels(), p.getTotalNumOutputChannels());
+    juce::AudioBuffer<float> buffer (numCh, block);
+    juce::MidiBuffer midi;
+    std::vector<float> out (signal.size(), 0.0f);
+    for (size_t pos = 0; pos < signal.size(); pos += static_cast<size_t> (block))
+    {
+        const int n = static_cast<int> (std::min<size_t> (static_cast<size_t> (block), signal.size() - pos));
+        buffer.setSize (numCh, n, false, false, true);
+        buffer.clear();
+        for (int ch = 0; ch < p.getTotalNumInputChannels(); ++ch)
+            buffer.copyFrom (ch, 0, signal.data() + pos, n);
+        t.samples = static_cast<int64_t> (pos);
+        p.processBlock (buffer, midi);
+        std::copy (buffer.getReadPointer (0), buffer.getReadPointer (0) + n, out.begin() + static_cast<long> (pos));
+    }
+    return out;
+}
+
+juce::AudioProcessorParameter* findParameter (juce::AudioPluginInstance& p, const char* utf8Name)
+{
+    for (auto* param : p.getParameters())
+        if (param->getName (64) == juce::String::fromUTF8 (utf8Name))
+            return param;
+    return nullptr;
+}
+
+/** Adds a graphical-mode note (and turns graphMode on) inside a hosted VST3's
+    project state: VST3PluginState > IComponent (base64) > plugin XML chunk +
+    JUCE private trailer. This is what FL Studio stores in the .flp. */
+bool injectGraphNote (juce::MemoryBlock& state, double start, double end, double pitch)
+{
+    auto outer = juce::AudioProcessor::getXmlFromBinary (state.getData(), static_cast<int> (state.getSize()));
+    auto* component = outer != nullptr ? outer->getChildByName ("IComponent") : nullptr;
+    juce::MemoryBlock stream;
+    if (component == nullptr || ! stream.fromBase64Encoding (component->getAllSubText()) || stream.getSize() < 9)
+        return false;
+    auto plugin = juce::AudioProcessor::getXmlFromBinary (stream.getData(), static_cast<int> (stream.getSize()));
+    if (plugin == nullptr)
+        return false;
+
+    const auto xmlLength = juce::ByteOrder::littleEndianInt (static_cast<const char*> (stream.getData()) + 4);
+    const size_t chunk = 9 + static_cast<size_t> (xmlLength); // magic + size + text + '\0'
+    juce::MemoryBlock trailer;
+    if (stream.getSize() > chunk)
+        trailer.append (static_cast<const char*> (stream.getData()) + chunk, stream.getSize() - chunk);
+
+    auto* graph = plugin->getChildByName ("Graph");
+    if (graph == nullptr)
+        graph = plugin->createNewChildElement ("Graph");
+    auto* note = graph->createNewChildElement ("Note");
+    note->setAttribute ("id", 1000);
+    note->setAttribute ("start", start);
+    note->setAttribute ("end", end);
+    note->setAttribute ("pitch", pitch);
+    note->setAttribute ("retuneMs", 0.0);
+    note->setAttribute ("vibratoKeep", -1.0);
+    note->setAttribute ("formantSt", 0.0);
+    bool modeSet = false;
+    for (auto* param : plugin->getChildWithTagNameIterator ("PARAM"))
+        if (param->getStringAttribute ("id") == "graphMode")
+        {
+            param->setAttribute ("value", 1.0);
+            modeSet = true;
+        }
+
+    juce::MemoryBlock newStream;
+    juce::AudioProcessor::copyXmlToBinary (*plugin, newStream);
+    newStream.append (trailer.getData(), trailer.getSize());
+    component->deleteAllTextElements();
+    component->addTextElement (newStream.toBase64Encoding());
+    state.reset();
+    juce::AudioProcessor::copyXmlToBinary (*outer, state);
+    return modeSet;
+}
+
 juce::MemoryBlock saveState (juce::AudioPluginInstance& p)
 {
     juce::MemoryBlock mb;
@@ -349,6 +478,73 @@ void runAll (const juce::String& path, bool withEditor)
             ok = stats.finite && stats.peak > 0.01f;
         }
         report (juce::String ("layout ") + name, ok);
+    }
+
+    // 8. Graphical mode (FL has no ARA): a project with a note object, played
+    //    by the host transport, looped, stopped, saved and reopened ------------
+    {
+        const double sr = 48000.0;
+        const float inputHz = static_cast<float> (220.0 * std::exp2 (30.0 / 1200.0)); // A3 +30 c
+        const double editedHz = 440.0 * std::exp2 ((59.0 - 69.0) / 12.0);           // B3
+        const auto sig = novapitch::signals::sawtooth (inputHz, sr, 1.5);
+        auto cents = [] (double a, double b) { return a > 0.0 && b > 0.0 ? 1200.0 * std::log2 (a / b) : 9999.0; };
+        auto measure = [&] (const std::vector<float>& out) { return estimateHz (out, static_cast<size_t> (0.6 * sr), static_cast<size_t> (0.4 * sr), sr); };
+
+        auto inst = host.create (sr, 256);
+        bool ok = inst != nullptr;
+        juce::String detail;
+        Transport transport;
+        if (ok && host.description.pluginFormatName != "VST3")
+        {
+            std::cout << "[SKIP] graphical mode project test: the state wrapper is VST3-specific" << std::endl;
+            ok = false;
+            inst.reset();
+        }
+        else if (ok)
+        {
+            // The project as FL stores it, edited to contain one B3 note over 0..2 s.
+            auto state = saveState (*inst);
+            ok = injectGraphNote (state, 0.0, 2.0, 59.0);
+            if (ok)
+                inst->setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+            auto* graphMode = findParameter (*inst, "Modo gráfico");
+            ok = ok && graphMode != nullptr && graphMode->getValue() > 0.5f;
+            inst->setPlayHead (&transport);
+            prepare (*inst, sr, 256);
+        }
+        if (ok)
+        {
+            const double first = measure (playWithTransport (*inst, transport, sig, 256));
+            const double looped = measure (playWithTransport (*inst, transport, sig, 256)); // loop: back to 0
+            transport.playing = false;
+            const double stopped = measure (playWithTransport (*inst, transport, sig, 256));
+            transport.playing = true;
+            detail << "playing " << juce::String (cents (first, editedHz), 1) << " c, looped " << juce::String (cents (looped, editedHz), 1)
+                   << " c vs B3; stopped " << juce::String (cents (stopped, inputHz), 1) << " c vs input";
+            ok = std::abs (cents (first, editedHz)) < 10.0 && std::abs (cents (looped, editedHz)) < 10.0
+                 && std::abs (cents (stopped, inputHz)) < 10.0;
+
+            // Save and reopen: the object travels with the project.
+            const auto saved = saveState (*inst);
+            inst->setPlayHead (nullptr);
+            inst->releaseResources();
+            auto reopened = host.create (sr, 256);
+            ok = ok && reopened != nullptr;
+            if (ok)
+            {
+                reopened->setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+                Transport t2;
+                reopened->setPlayHead (&t2);
+                prepare (*reopened, sr, 256);
+                const double again = measure (playWithTransport (*reopened, t2, sig, 256));
+                detail << "; reopened " << juce::String (cents (again, editedHz), 1) << " c";
+                ok = ok && std::abs (cents (again, editedHz)) < 10.0;
+                reopened->setPlayHead (nullptr);
+                reopened->releaseResources();
+            }
+        }
+        if (inst != nullptr)
+            report ("graphical mode: project object + transport (play, loop, stop, reopen)", ok, detail);
     }
 
     // 7. Editor open/close while the audio thread runs ------------------------
