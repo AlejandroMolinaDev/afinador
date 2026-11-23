@@ -53,6 +53,17 @@ private:
     juce::String buildFooterText() const;
     void showPage (Page);
 
+    // Presets / settings
+    void refreshPresetBox();
+    void showSaveDialog();
+    void showOptionsMenu();
+    void applyAccent (juce::Colour);
+
+    // MIDI Learn
+    void showKnobMenu (LabeledKnob&);
+    void refreshMidiLabels();
+    std::vector<LabeledKnob*> allKnobs() const;
+
     NovaPitchProcessor& processor;
     NovaLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 600 };
@@ -72,6 +83,14 @@ private:
     std::array<juce::TextButton, 3> tabs;
     std::array<juce::Component, 3> pages;
     Page currentPage = Page::Correction;
+
+    // Preset bar (header)
+    juce::ComboBox presetBox;
+    juce::TextButton prevPreset { "<" }, nextPreset { ">" }, savePreset, optionsButton;
+    std::unique_ptr<juce::AlertWindow> saveDialog;
+    juce::String shownPresetName;
+    int shownMidiGeneration = -1;
+    int shownLearning = -2;
 
     juce::String hostDescription;
     bool hostIsFlStudio = false;

@@ -4,9 +4,9 @@ Plugin de **corrección de afinación vocal en tiempo real** (monofónico) para 
 
 > Nombre de trabajo. Verificar disponibilidad de la marca antes de publicar.
 
-![NovaPitch — Fase 5](docs/img/fase5-vibrato.png)
+![NovaPitch — Fase 6](docs/img/fase6-editor.png)
 
-**Estado:** Fase 5 — corrección automática en tiempo real (tonalidad y 14 escalas, velocidad 0–400 ms, tolerancia, sostenido natural, transposición ±12, mezcla) con 4 modos: Live (3 ms), Tracking (10 ms), HQ (100 ms) y Vintage; formantes preservados o desplazados ±12 st y carácter; vibrato natural conservado, eliminado o exagerado (0–200 %) con visualizador, y vibrato artificial. Siguiente: UI completa y presets (Fase 6). Ver `docs/ROADMAP.md`.
+**Estado:** Fase 6 — corrección automática en tiempo real (tonalidad y 14 escalas, velocidad, tolerancia, sostenido natural, transposición ±12, mezcla) con 4 modos (Live 3 ms, Tracking 10 ms, HQ 100 ms, Vintage), formantes, vibrato natural/artificial, presets de fábrica y de usuario, MIDI Learn y color de acento. Siguiente: armonías y MIDI (Fase 7). Ver `docs/ROADMAP.md`.
 
 | Formato | Windows x64 | macOS Universal (Apple Silicon + Intel) | Linux (opcional) |
 |---|---|---|---|
@@ -87,6 +87,11 @@ xattr -dr com.apple.quarantine NovaPitch.vst3 NovaPitch.component NovaPitch.clap
 4. La ventana muestra "FL Studio detectado", el formato cargado, frecuencia de muestreo, tamaños de bloque, canales y eventos MIDI recibidos.
 
 Checklist completo de pruebas manuales: [`docs/TESTING_FL.md`](docs/TESTING_FL.md).
+
+## Presets y MIDI Learn
+- **Presets**: selector en la cabecera (`<` `>` para recorrerlos, **Guardar** para crear uno de usuario). Los presets cambian el sonido, nunca la tonalidad, la escala, las notas ni la referencia A4. Los de usuario se guardan en `Documentos/NovaPitch/Presets` (archivos `.novapreset`, se pueden copiar entre equipos).
+- **MIDI Learn**: clic derecho sobre cualquier knob → *Asignar a controlador MIDI (aprender)* y mueve un control de tu teclado/controlador. Funciona en CLAP, AU y Standalone. En **VST3 dentro de FL Studio** usa *Link to controller* de FL (FL no envía CC a efectos VST3).
+- **Color de acento**: botón `···` de la cabecera.
 
 ## Probar sin DAW: render offline
 `NovaPitchRender` procesa un WAV/AIFF/FLAC con los parámetros que quieras y compensa la latencia, para comparar antes/después con tus propias tomas:

@@ -115,5 +115,20 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 56 | Variación, Amplitud y Formante del vibrato artificial: cambios audibles y sin clics | | |
 | 57 | Cambiar de pestaña con la reproducción en marcha: sin cortes de audio | | |
 
+## Fase 6 — Presets, MIDI Learn, apariencia
+
+> Automático en CI: presets de fábrica (no tocan tonalidad/escala/notas/A4), presets de usuario guardar/listar/cargar/borrar (incluye nombres con "ñ"), nombre del preset guardado en el proyecto, MIDI Learn (CC aprendido, valor aplicado, mapeo restaurado al reabrir), capturas de las 3 pestañas.
+
+| # | Prueba | Windows | macOS |
+|---|---|---|---|
+| 58 | Recorrer los presets de fábrica con `<` `>`: el sonido cambia, la tonalidad/escala no | | |
+| 59 | **Guardar** un preset de usuario, cerrar FL, reabrir: aparece en la lista y carga igual | | |
+| 60 | `···` → *Abrir carpeta de presets* abre `Documentos/NovaPitch/Presets` | | |
+| 61 | **CLAP**: clic derecho en un knob → *Asignar a controlador MIDI* → mover un knob del controlador: queda "· CC n" y lo controla | | |
+| 62 | **VST3**: el menú indica usar *Link to controller* de FL; verificar que *Link to controller* funciona con los parámetros de NovaPitch | | |
+| 63 | Guardar el proyecto con mapeos MIDI y reabrir: mapeos intactos | | |
+| 64 | `···` → *Color de acento*: cambia el color y se mantiene al reabrir el proyecto | | |
+| 65 | Redimensionar 75 %–200 % en pantallas HiDPI (Windows 150 %/200 %, Retina) | | |
+
 ## Notas / incidencias encontradas
 - 

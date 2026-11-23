@@ -135,6 +135,10 @@ target_sources(NovaPitchCore INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/Parameters.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/Parameters.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PitchFrameFifo.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PresetManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PresetManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/MidiLearn.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/MidiLearn.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/LookAndFeel.cpp

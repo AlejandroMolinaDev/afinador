@@ -9,8 +9,10 @@
 #include "dsp/PsolaShifter.h"
 #include "dsp/VibratoAnalyzer.h"
 #include "dsp/VibratoSynth.h"
+#include "plugin/MidiLearn.h"
 #include "plugin/Parameters.h"
 #include "plugin/PitchFrameFifo.h"
+#include "plugin/PresetManager.h"
 
 #include <array>
 #include <atomic>
@@ -113,6 +115,12 @@ public:
     /** Pitch frames for the UI (consumer: message thread). */
     PitchFrameFifo& getPitchFrameFifo() noexcept { return pitchFifo; }
 
+    PresetManager& getPresetManager() noexcept { return *presetManager; }
+    MidiLearn& getMidiLearn() noexcept { return midiLearn; }
+
+    /** Incremented (message thread) whenever MIDI mappings change: lets the editor refresh labels. */
+    int getMidiMappingGeneration() const noexcept { return midiMappingGeneration.load(); }
+
 private:
     struct ParamPointers
     {
@@ -184,6 +192,10 @@ private:
     float formantStaticFactor = 1.0f; // shift x character (x link part)
 
     std::atomic<int> desiredLatency { 0 };
+
+    MidiLearn midiLearn { *this };
+    std::unique_ptr<PresetManager> presetManager;
+    std::atomic<int> midiMappingGeneration { 0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NovaPitchProcessor)
 };

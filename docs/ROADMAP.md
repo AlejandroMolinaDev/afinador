@@ -9,7 +9,7 @@ Estado por fases (ver especificación original, sección 11).
 | 3 | NoteMapper + CorrectionCurve + PSOLA (Live/Tracking) + transposición + mezcla + latencia | ✅ Hecho (prueba manual en FL pendiente) |
 | 4 | FormantProcessor + motor HQ (signalsmith-stretch) + modo Vintage | ✅ Hecho (prueba manual en FL pendiente) |
 | 5 | VibratoAnalyzer / Conservar vibrato / VibratoSynth / visualizador | ✅ Hecho (prueba manual en FL pendiente) |
-| 6 | UI completa + presets + redimensionado + MIDI Learn | ⏳ |
+| 6 | UI completa + presets + redimensionado + MIDI Learn | ✅ Hecho (pendiente tu revisión visual y prueba en FL) |
 | 7 | HarmonyEngine (4 voces) + MIDI Target + aprender escala + acordes MIDI | ⏳ |
 | 8 | Modo gráfico sin ARA (captura por reproducción, objetos, undo/redo) | ⏳ |
 | 9 | Corrección temporal, detector de tonalidad + sync de instancias, ARA2, AAX, Linux | ⏳ |
@@ -53,6 +53,15 @@ Estado por fases (ver especificación original, sección 11).
 
 ### Fase 6
 - [x] Pestañas Corrección / Formantes / Vibrato (adelantado en la Fase 5).
+- [x] Presets de fábrica (Por defecto, Corrección natural, Pop moderno, Hard tune, Trap / urbano latino, Directo, Voz grave) y de usuario (`Documentos/NovaPitch/Presets/*.novapreset`).
+- [x] MIDI Learn (clic derecho en cualquier knob), mapeos guardados en el proyecto.
+- [x] Color de acento configurable (guardado en el proyecto).
+- [ ] **Revisión visual por tu parte** (criterio de aceptación de la Fase 6): capturas en el artefacto `UI-snapshots-*` de cada ejecución de CI.
+- [ ] Preset "Armonías 3as": llega con el HarmonyEngine (Fase 7).
+- [ ] Indicador de preset modificado ("*") y comparación A/B.
+- [ ] Archivo global de usuario para mapeos MIDI por defecto (opcional en la especificación; hoy se guardan en cada proyecto).
+- [ ] Teclado de 12 notas en la UI (estados Activa/Ignorar/Eliminar): los parámetros `noteState0..11` existen y son automatizables; falta el componente visual.
+- [ ] MIDI Learn en VST3 dentro de FL: FL no envía CC a efectos VST3 sin parámetros CC emulados (desactivados a propósito). Se documenta "Link to controller" de FL; en CLAP/AU/Standalone funciona directo.
 - [ ] Guardar el tamaño de la ventana del editor en el estado del plugin.
 - [ ] Color de acento configurable desde la UI (la infraestructura `NovaLookAndFeel::setAccent` ya existe).
 

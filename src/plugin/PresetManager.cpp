@@ -1,0 +1,172 @@
+#include "plugin/PresetManager.h"
+#include "plugin/Parameters.h"
+
+namespace novapitch
+{
+
+namespace
+{
+using Values = std::vector<std::pair<juce::String, float>>;
+
+struct FactoryPreset
+{
+    const char* name; // UTF-8
+    Values values;    // real (denormalised) values; anything not listed = default
+};
+
+const std::vector<FactoryPreset>& factoryPresets()
+{
+    // Modes: 0 Live, 1 Tracking, 2 HQ, 3 Vintage. Profiles: 0 Soprano, 1 Alto/Tenor,
+    // 2 Voz grave, 3 Instrumento, 4 Instrumento grave.
+    static const std::vector<FactoryPreset> presets {
+        { PresetManager::kDefaultPresetName, {} },
+        { "Corrección natural", { { ParamIDs::qualityMode, 1.0f }, { ParamIDs::retuneSpeed, 60.0f },
+                                  { ParamIDs::tolerance, 15.0f }, { ParamIDs::naturalHold, 60.0f },
+                                  { ParamIDs::vibratoPreserve, 100.0f } } },
+        { "Pop moderno", { { ParamIDs::qualityMode, 1.0f }, { ParamIDs::retuneSpeed, 15.0f },
+                           { ParamIDs::tolerance, 5.0f }, { ParamIDs::naturalHold, 30.0f },
+                           { ParamIDs::vibratoPreserve, 80.0f } } },
+        { "Hard tune", { { ParamIDs::qualityMode, 1.0f }, { ParamIDs::retuneSpeed, 0.0f },
+                         { ParamIDs::tolerance, 0.0f }, { ParamIDs::naturalHold, 0.0f },
+                         { ParamIDs::vibratoPreserve, 0.0f } } },
+        { "Trap / urbano latino", { { ParamIDs::qualityMode, 3.0f }, { ParamIDs::sensitivity, 60.0f },
+                                    { ParamIDs::vibratoPreserve, 0.0f }, { ParamIDs::character, 5.0f } } },
+        { "Directo", { { ParamIDs::qualityMode, 0.0f }, { ParamIDs::retuneSpeed, 25.0f },
+                       { ParamIDs::tolerance, 10.0f }, { ParamIDs::naturalHold, 20.0f } } },
+        { "Voz grave", { { ParamIDs::inputProfile, 2.0f }, { ParamIDs::qualityMode, 1.0f },
+                         { ParamIDs::retuneSpeed, 50.0f }, { ParamIDs::naturalHold, 40.0f } } },
+    };
+    return presets;
+}
+} // namespace
+
+PresetManager::PresetManager (juce::AudioProcessorValueTreeState& s, juce::File folder)
+    : state (s), userFolder (folder == juce::File() ? defaultUserFolder() : folder)
+{
+    if (! state.state.hasProperty (kPresetNameProperty))
+        state.state.setProperty (kPresetNameProperty, juce::String::fromUTF8 (kDefaultPresetName), nullptr);
+}
+
+juce::File PresetManager::defaultUserFolder()
+{
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("NovaPitch").getChildFile ("Presets");
+}
+
+bool PresetManager::isSongParameter (const juce::String& id)
+{
+    return id == ParamIDs::key || id == ParamIDs::scale || id == ParamIDs::referenceA4 || id.startsWith ("noteState");
+}
+
+std::vector<PresetManager::Preset> PresetManager::getPresets() const
+{
+    std::vector<Preset> out;
+    for (const auto& f : factoryPresets())
+        out.push_back ({ juce::String::fromUTF8 (f.name), true, {} });
+
+    std::vector<Preset> user;
+    for (const auto& file : userFolder.findChildFiles (juce::File::findFiles, false, juce::String ("*") + kFileExtension))
+        user.push_back ({ file.getFileNameWithoutExtension(), false, file });
+    std::sort (user.begin(), user.end(), [] (const Preset& a, const Preset& b) { return a.name.compareNatural (b.name) < 0; });
+    out.insert (out.end(), user.begin(), user.end());
+    return out;
+}
+
+void PresetManager::applyValues (const Values& values)
+{
+    // Everything that is not a song setting goes back to its default first.
+    for (auto* p : state.processor.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! isSongParameter (ranged->getParameterID()))
+                ranged->setValueNotifyingHost (ranged->getDefaultValue());
+
+    for (const auto& [id, value] : values)
+        if (! isSongParameter (id))
+            if (auto* param = state.getParameter (id))
+                param->setValueNotifyingHost (param->convertTo0to1 (value));
+}
+
+bool PresetManager::loadPreset (const juce::String& name)
+{
+    for (const auto& f : factoryPresets())
+        if (juce::String::fromUTF8 (f.name) == name)
+        {
+            applyValues (f.values);
+            state.state.setProperty (kPresetNameProperty, name, nullptr);
+            return true;
+        }
+
+    const auto file = userFolder.getChildFile (name + kFileExtension);
+    if (auto xml = juce::XmlDocument::parse (file); xml != nullptr && xml->hasTagName ("NovaPitchPreset"))
+    {
+        Values values;
+        for (auto* e : xml->getChildWithTagNameIterator ("Param"))
+            values.emplace_back (e->getStringAttribute ("id"), static_cast<float> (e->getDoubleAttribute ("value")));
+        applyValues (values);
+        state.state.setProperty (kPresetNameProperty, name, nullptr);
+        return true;
+    }
+    return false;
+}
+
+bool PresetManager::saveUserPreset (const juce::String& rawName)
+{
+    const auto name = juce::File::createLegalFileName (rawName.trim());
+    if (name.isEmpty())
+        return false;
+
+    juce::XmlElement xml ("NovaPitchPreset");
+    xml.setAttribute ("version", 1);
+    xml.setAttribute ("name", name);
+    for (auto* p : state.processor.getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (! isSongParameter (ranged->getParameterID()))
+            {
+                auto* e = xml.createNewChildElement ("Param");
+                e->setAttribute ("id", ranged->getParameterID());
+                e->setAttribute ("value", ranged->convertFrom0to1 (ranged->getValue()));
+            }
+
+    if (! userFolder.createDirectory())
+        return false;
+    if (! xml.writeTo (userFolder.getChildFile (name + kFileExtension)))
+        return false;
+    state.state.setProperty (kPresetNameProperty, name, nullptr);
+    return true;
+}
+
+bool PresetManager::deleteUserPreset (const juce::String& name)
+{
+    const auto file = userFolder.getChildFile (name + kFileExtension);
+    if (! file.existsAsFile() || ! file.deleteFile())
+        return false;
+    if (getCurrentPresetName() == name)
+        state.state.setProperty (kPresetNameProperty, juce::String::fromUTF8 (kDefaultPresetName), nullptr);
+    return true;
+}
+
+juce::String PresetManager::getCurrentPresetName() const
+{
+    return state.state.getProperty (kPresetNameProperty, juce::String::fromUTF8 (kDefaultPresetName)).toString();
+}
+
+int PresetManager::getCurrentIndex() const
+{
+    const auto presets = getPresets();
+    const auto current = getCurrentPresetName();
+    for (size_t i = 0; i < presets.size(); ++i)
+        if (presets[i].name == current)
+            return static_cast<int> (i);
+    return -1;
+}
+
+bool PresetManager::loadNext (int direction)
+{
+    const auto presets = getPresets();
+    if (presets.empty())
+        return false;
+    const int n = static_cast<int> (presets.size());
+    const int index = (std::max (0, getCurrentIndex()) + (direction >= 0 ? 1 : -1) + n) % n;
+    return loadPreset (presets[static_cast<size_t> (index)].name);
+}
+
+} // namespace novapitch

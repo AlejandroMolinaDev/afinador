@@ -5,33 +5,65 @@
 
 #include "ui/LookAndFeel.h"
 
+#include <functional>
+
 namespace novapitch
 {
 
+/** Slider that reports right-clicks instead of dragging with them. */
+class KnobSlider final : public juce::Slider
+{
+public:
+    std::function<void()> onRightClick;
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && onRightClick)
+            onRightClick();
+        else
+            juce::Slider::mouseDown (e);
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu())
+            juce::Slider::mouseDrag (e);
+    }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu())
+            juce::Slider::mouseUp (e);
+    }
+};
+
 /** Rotary knob with a caption above and the value (with units) below,
-    attached to an APVTS parameter. */
+    attached to an APVTS parameter. Right-click opens a context menu
+    (MIDI Learn), provided by the editor through onContextMenu. */
 class LabeledKnob final : public juce::Component
 {
 public:
     LabeledKnob (juce::AudioProcessorValueTreeState& state, const juce::String& paramId,
-                 const juce::String& caption, const juce::String& tooltip)
+                 const juce::String& captionText, const juce::String& tooltip)
+        : caption (captionText)
     {
         label.setText (caption, juce::dontSendNotification);
         label.setJustificationType (juce::Justification::centred);
         label.setFont (juce::FontOptions (12.0f, juce::Font::bold));
         label.setColour (juce::Label::textColourId, Palette::textMuted);
+        label.setMinimumHorizontalScale (0.7f);
         addAndMakeVisible (label);
 
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 18);
         slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
         slider.setColour (juce::Slider::textBoxTextColourId, Palette::textPrimary);
-        slider.setTooltip (tooltip);
+        slider.setTooltip (tooltip + juce::String::fromUTF8 ("\n(Clic derecho: asignar a un controlador MIDI)"));
+        slider.onRightClick = [this] { if (onContextMenu) onContextMenu (*this); };
         addAndMakeVisible (slider);
 
         attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (state, paramId, slider);
         if (auto* param = state.getParameter (paramId))
         {
+            parameterIndex = param->getParameterIndex();
             // Show the parameter's own text (units, rounding) and accept typed values.
             slider.textFromValueFunction = [param] (double v) {
                 return param->getText (param->convertTo0to1 (static_cast<float> (v)), 32);
@@ -51,11 +83,32 @@ public:
         slider.setBounds (r);
     }
 
+    /** Caption suffix for MIDI Learn: mapped CC number (-1 = none), learning state. */
+    void setMidiState (int cc, bool learning, juce::Colour accent)
+    {
+        if (learning)
+        {
+            label.setText (juce::String::fromUTF8 ("Mueve un control MIDI…"), juce::dontSendNotification);
+            label.setColour (juce::Label::textColourId, accent);
+        }
+        else
+        {
+            label.setText (cc >= 0 ? caption + juce::String::fromUTF8 (" \xc2\xb7 CC") + juce::String (cc) : caption, juce::dontSendNotification);
+            label.setColour (juce::Label::textColourId, cc >= 0 ? Palette::textPrimary : Palette::textMuted);
+        }
+    }
+
+    int getParameterIndex() const noexcept { return parameterIndex; }
+    const juce::String& getCaption() const noexcept { return caption; }
     juce::Slider& getSlider() noexcept { return slider; }
 
+    std::function<void (LabeledKnob&)> onContextMenu;
+
 private:
+    juce::String caption;
     juce::Label label;
-    juce::Slider slider;
+    KnobSlider slider;
+    int parameterIndex = -1;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
 };
 

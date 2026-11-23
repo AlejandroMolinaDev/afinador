@@ -81,10 +81,11 @@ NovaPitchProcessor::NovaPitchProcessor()
     params.vibFormantMod = get (ParamIDs::vibFormantMod);
 
     pitchDetector.setListener (this);
+    presetManager = std::make_unique<PresetManager> (apvts);
 
     // Report the default mode's latency from the start (hosts query it before prepare).
     setLatencySamples (latencyForMode (kDefaultQualityMode, 44100.0));
-    startTimerHz (10);
+    startTimerHz (30); // latency changes + MIDI Learn values
 }
 
 NovaPitchProcessor::~NovaPitchProcessor()
@@ -174,6 +175,9 @@ void NovaPitchProcessor::timerCallback()
     const int latency = desiredLatency.load();
     if (latency != getLatencySamples())
         setLatencySamples (latency);
+
+    if (midiLearn.dispatchPending())
+        ++midiMappingGeneration;
 }
 
 //==============================================================================
@@ -445,6 +449,7 @@ void NovaPitchProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     updateMin (diagnostics.minBlockSize, numSamples);
     updateMax (diagnostics.maxBlockSize, numSamples);
 
+    midiLearn.processMidi (midi); // CC -> learned parameters (applied on the message thread)
     updateDspFromParameters();
     runChain (buffer, false);
 }
@@ -470,6 +475,8 @@ void NovaPitchProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty (kStateVersionProperty, kStateVersion, nullptr);
+    state.removeChild (state.getChildWithName (MidiLearn::kStateTag), nullptr);
+    state.appendChild (midiLearn.toValueTree(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -486,6 +493,7 @@ void NovaPitchProcessor::setStateInformation (const void* data, int sizeInBytes)
             return; // unknown / foreign data: keep current state
 
         apvts.replaceState (migrateState (juce::ValueTree::fromXml (*xml)));
+        midiLearn.fromValueTree (apvts.state.getChildWithName (MidiLearn::kStateTag));
     }
 }
 
