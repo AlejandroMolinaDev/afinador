@@ -19,6 +19,7 @@
 
 #include "ui/components/NoteKeyboard.h"
 
+#include <functional>
 #include <typeinfo>
 #include <vector>
 
@@ -176,6 +177,16 @@ inline void checkTexts (LayoutReport& report, juce::Component& c)
 inline LayoutReport checkLayout (juce::Component& root, float minTarget = 14.0f)
 {
     LayoutReport report;
+    // A tooltip is transient (the next mouse move hides it): not part of the layout.
+    std::function<void (juce::Component&)> hideTips = [&] (juce::Component& c) {
+        for (auto* child : c.getChildren())
+        {
+            if (auto* tip = dynamic_cast<juce::TooltipWindow*> (child); tip != nullptr && tip->isVisible())
+                tip->hideTip();
+            hideTips (*child);
+        }
+    };
+    hideTips (root);
     std::vector<juce::Component*> leaves, texts;
     collect (root, root, leaves, texts);
     report.controls = static_cast<int> (leaves.size());

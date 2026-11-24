@@ -83,14 +83,16 @@ struct GraphSession
         REQUIRE (UiTestAccess::graphView (h.ed()));
         bot.click (h.get<juce::Button> ("capture"));
         REQUIRE (h.p().isGraphCapturing());
-        CHECK (UiTestAccess::infoText (graph()).startsWith (u8 ("Esperando reproducción"))); // transport stopped
+        CHECK (waitFor ([&] { return UiTestAccess::infoText (graph()).startsWith (u8 ("Esperando reproducción")); })); // transport stopped
         const std::vector<float> first (voice.begin(), voice.begin() + static_cast<long> (voice.size() / 2));
         h.feed (first, &head);
-        CHECK (UiTestAccess::infoText (graph()).startsWith (u8 ("Capturando")));
+        CHECK (waitFor ([&] { return UiTestAccess::infoText (graph()).startsWith (u8 ("Capturando")); }));
         h.feed (voice, &head); // the second pass replaces the first, same range
         bot.click (h.get<juce::Button> ("capture"));
         CHECK_FALSE (h.p().isGraphCapturing());
-        pump (300);
+        // The capture is committed by the processor's timer.
+        CHECK (waitFor ([&] { return model().getPendingCapture().empty() && ! model().getCaptured().empty(); }, 3000));
+        pump (100);
     }
 
     /** Plays the voice from the start with the transport and returns the output. */
@@ -110,7 +112,7 @@ TEST_CASE ("Graph: capture, import, undo / redo, and a note drawn with the mouse
     GraphSession s;
     s.capture();
     CHECK (s.model().getCaptured().size() > 200);
-    CHECK (UiTestAccess::infoText (s.graph()).startsWith (u8 ("Captura 0:02")));
+    CHECK (waitFor ([&] { return UiTestAccess::infoText (s.graph()).startsWith (u8 ("Captura 0:02")); }));
     s.h.shot ("grafico-captura");
 
     // "Desde la captura" in Escuchar is now available.
@@ -336,7 +338,7 @@ TEST_CASE ("Graph: keyboard shortcuts, view controls and follow", "[ui][graph]")
     s.bot.click (follow); // setView turned it off: on again
     CHECK (UiTestAccess::following (s.graph()));
     s.play();
-    CHECK (UiTestAccess::viewStart (s.graph()) > 1.0);
+    CHECK (waitFor ([&] { return UiTestAccess::viewStart (s.graph()) > 1.0; }));
 }
 
 //==============================================================================
@@ -387,7 +389,7 @@ TEST_CASE ("Graph: time tool moves a syllable, Alt+click undoes it; clear menu",
     pump (100);
     CHECK (s.model().getObjects().getNumChildren() == 0);
     CHECK (s.model().getCaptured().empty());
-    CHECK (UiTestAccess::infoText (s.graph()) == u8 ("Captura 0:00 · 0 objetos"));
+    CHECK (waitFor ([&] { return UiTestAccess::infoText (s.graph()) == u8 ("Captura 0:00 · 0 objetos"); }));
     itemId (UiTestAccess::clearMenu (s.graph()), u8 ("Borrar la curva capturada"), &enabled);
     CHECK_FALSE (enabled);
 }

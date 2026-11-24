@@ -127,21 +127,20 @@ TEST_CASE ("Notas: right-click menu, wheel detune, exact detune dialog", "[ui][n
     const int other = itemId (UiTestAccess::keyMenu (k, 10), u8 ("Otro valor"));
     REQUIRE (other > 0);
     UiTestAccess::chooseKeyItem (k, 10, other);
-    pump (60);
+    CHECK (waitFor ([&] { return UiTestAccess::detuneDialog (k) != nullptr && UiTestAccess::detuneDialog (k)->isShowing(); }));
     auto* dialog = UiTestAccess::detuneDialog (k);
     REQUIRE (dialog != nullptr);
     CHECK (dialog->isShowing());
     dialog->getTextEditor ("cents")->setText (u8 ("−31,2"));
     bot.click (dialogButton (*dialog, u8 ("Aceptar"))); // closes and deletes the dialog
-    pump (80);
-    CHECK (UiTestAccess::detuneDialog (k) == nullptr);
+    CHECK (waitFor ([&] { return UiTestAccess::detuneDialog (k) == nullptr; }));
     CHECK (h.param (ParamIDs::noteDetune (10)) == Approx (-31.2f).margin (0.01f));
     h.shot ("notas-desafinacion");
 
     // "Quitar todas las desafinaciones".
     UiTestAccess::chooseKeyItem (k, 0, itemId (UiTestAccess::keyMenu (k, 0), u8 ("Quitar todas las desafinaciones")));
     for (int pc = 0; pc < 12; ++pc)
-        CHECK (h.param (ParamIDs::noteDetune (pc)) == Approx (0.0f));
+        CHECK (h.param (ParamIDs::noteDetune (pc)) == Approx (0.0f).margin (0.001f)); // stored with float rounding
     CHECK (state (h, 4) == 2); // states untouched
 }
 
@@ -171,8 +170,7 @@ TEST_CASE ("Armonias: voice buttons show one panel; the mode picks the interval 
     CHECK (h.get<juce::Button> ("voice2").getButtonText() == u8 ("Voz 2 · Semit."));
 
     h.setParam (ParamIDs::harmonyVoice ("hvMode", 2), 1.0f); // host: Diatónica
-    pump (60);
-    CHECK (degrees.isShowing());
+    CHECK (waitFor ([&] { return degrees.isShowing(); }));
     CHECK_FALSE (semitones.isShowing());
     CHECK (h.get<juce::Button> ("voice2").getButtonText() == u8 ("Voz 2 · Diat."));
     h.shot ("armonias-voz2");

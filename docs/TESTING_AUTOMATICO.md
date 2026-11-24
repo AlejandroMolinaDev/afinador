@@ -25,6 +25,7 @@ Mientras no se pueda probar en FL Studio, NovaPitch se verifica con varias capas
   - todos los textos caben sin comprimirse, medidos con la fuente real de cada sistema: botones, interruptores, rótulos, los valores de cada knob en mínimo, máximo y por defecto, y todos los elementos de cada desplegable;
   - los controles tienen un tamaño mínimo para poder pulsarlos.
 - Las **capturas** de cada escenario (al 100 % y al 200 %) se suben como artefactos `UI-test-shots-*`, y en Linux también las capturas de pantalla de la ventana real del host.
+- Las pruebas funcionan igual en pantallas pequeñas (los runners de Windows tienen 1024 × 768): las ventanas de prueba no tienen marco, igual que un editor incrustado en FL; los clics reales se hacen con la ventana a un tamaño que cabe en pantalla; y todo lo que actualiza un temporizador de la interfaz se espera hasta que ocurre, sin tiempos fijos.
 
 ## Defectos encontrados y corregidos con estas pruebas
 

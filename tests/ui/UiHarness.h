@@ -42,6 +42,20 @@ inline juce::String u8 (const char* text) { return juce::String::fromUTF8 (text)
 /** Runs the message loop (UI timers, async updates, repaints) for `ms`. */
 inline void pump (int ms = 60) { juce::MessageManager::getInstance()->runDispatchLoopUntil (ms); }
 
+/** Runs the message loop until `condition` holds (or `timeoutMs` passes) and returns it.
+    Use it for everything a UI timer updates: CI machines can be slow to fire timers. */
+inline bool waitFor (const std::function<bool()>& condition, int timeoutMs = 2000)
+{
+    const auto end = juce::Time::getMillisecondCounter() + static_cast<juce::uint32> (timeoutMs);
+    while (! condition())
+    {
+        if (juce::Time::getMillisecondCounter() > end)
+            return false;
+        pump (15);
+    }
+    return true;
+}
+
 inline bool hasDisplay()
 {
    #if JUCE_LINUX || JUCE_BSD
@@ -229,21 +243,25 @@ public:
         click (c, local, keys, true);
     }
 
-    /** Press at `from`, move in `steps` to `to`, release (all in `c` coordinates). */
+    /** Press at `from`, move in `steps` to `to`, release (`c` coordinates at the moment
+        of the press: like a real mouse, the path is fixed on screen even if `c` moves
+        or resizes during the drag, e.g. a resize corner). */
     void drag (juce::Component& c, juce::Point<float> from, juce::Point<float> to, juce::ModifierKeys keys = {}, int steps = 12)
     {
         checkHit (c, from);
+        auto& top = *c.getTopLevelComponent();
+        const auto p0 = top.getLocalPoint (&c, from), p1 = top.getLocalPoint (&c, to);
         const auto left = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
         now = juce::jmax (now + 700, juce::Time::currentTimeMillis());
-        send (c, from, keys, {});
-        send (c, from, keys, left);
+        sendAt (top, p0, keys, {});
+        sendAt (top, p0, keys, left);
         for (int i = 1; i <= steps; ++i)
         {
             now += 16;
-            send (c, from + (to - from) * (static_cast<float> (i) / static_cast<float> (steps)), keys, left);
+            sendAt (top, p0 + (p1 - p0) * (static_cast<float> (i) / static_cast<float> (steps)), keys, left);
         }
         now += 16;
-        send (c, to, keys, {});
+        sendAt (top, p1, keys, {});
         reset();
         pump (40);
     }
@@ -288,10 +306,15 @@ private:
 
     static void reset() { juce::ModifierKeys::currentModifiers = {}; }
 
-    /** A user clicks the window they see: bring it in front of the other test windows. */
+    /** A user clicks the window they see: bring it in front of the other test windows.
+        A moving mouse also dismisses any tooltip on its way. */
     static void raise (juce::Component& c)
     {
         auto& top = *c.getTopLevelComponent();
+        forEach (top, [] (juce::Component& child) {
+            if (auto* tip = dynamic_cast<juce::TooltipWindow*> (&child); tip != nullptr && tip->isVisible())
+                tip->hideTip();
+        });
         if (juce::Desktop::getInstance().getComponent (juce::Desktop::getInstance().getNumComponents() - 1) != &top)
         {
             top.toFront (false);
@@ -315,10 +338,16 @@ private:
     void send (juce::Component& c, juce::Point<float> local, juce::ModifierKeys keys, juce::ModifierKeys buttons)
     {
         auto& top = *c.getTopLevelComponent();
+        sendAt (top, top.getLocalPoint (&c, local), keys, buttons);
+    }
+
+    /** One mouse event at a position of the window (peer coordinates). */
+    void sendAt (juce::Component& top, juce::Point<float> positionInWindow, juce::ModifierKeys keys, juce::ModifierKeys buttons)
+    {
         auto* peer = top.getPeer();
         REQUIRE (peer != nullptr);
         juce::ModifierKeys::currentModifiers = keys.withFlags (buttons.getRawFlags());
-        peer->handleMouseEvent (juce::MouseInputSource::InputSourceType::mouse, top.getLocalPoint (&c, local),
+        peer->handleMouseEvent (juce::MouseInputSource::InputSourceType::mouse, positionInWindow,
                                 keys.withFlags (buttons.getRawFlags()), juce::MouseInputSource::defaultPressure,
                                 juce::MouseInputSource::defaultOrientation, now);
         now += 8;
@@ -340,6 +369,7 @@ class Harness
 public:
     static constexpr double kSampleRate = 48000.0;
     static constexpr int kBlock = 256;
+    static constexpr int kWindowX = 20, kWindowY = 20;
 
     explicit Harness (int width = PluginEditor::kBaseWidth, bool open = true)
     {
@@ -365,8 +395,11 @@ public:
         closeEditor();
         window.reset (proc->createEditorAndMakeActive());
         REQUIRE (window != nullptr);
-        window->setTopLeftPosition (40, 40);
-        window->addToDesktop (juce::ComponentPeer::windowHasTitleBar | juce::ComponentPeer::windowAppearsOnTaskbar);
+        window->setTopLeftPosition (kWindowX, kWindowY);
+        // No native frame: like a plugin view embedded in a host window. (A native
+        // title bar makes Windows / macOS apply size limits to the frame and clamp
+        // titled windows to the screen.)
+        window->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
         window->setVisible (true);
         setWidth (width);
         pump (120);
@@ -381,6 +414,22 @@ public:
             window.reset();
             pump (60);
         }
+    }
+
+    /** Largest width <= `wanted` (760:640, at least 75 %) whose window fits on the
+        primary display, for tests that click with the real mouse path (CI desktops
+        can be as small as 1024 x 768). */
+    static int fitWidth (int wanted)
+    {
+        int fit = wanted;
+        if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        {
+            const auto area = display->userBounds.toNearestInt();
+            const int maxW = area.getRight() - kWindowX - 8;
+            const int maxH = area.getBottom() - kWindowY - 8;
+            fit = juce::jmin (wanted, maxW, maxH * PluginEditor::kBaseWidth / PluginEditor::kBaseHeight);
+        }
+        return juce::jmax (PluginEditor::kBaseWidth * 3 / 4, fit);
     }
 
     /** Resizes the window the way a host does (through the editor's constrainer). */

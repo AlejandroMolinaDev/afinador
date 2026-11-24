@@ -121,10 +121,10 @@ TEST_CASE ("Reopening the editor shows the saved view and the live state", "[ui]
     bot.click (h.get<juce::Button> ("modeGraph"));
     h.p().getPresetManager().selectSlot (1);
     h.closeEditor();
-    h.openEditor (1140);
+    h.openEditor (Harness::fitWidth (1140)); // as large as the screen allows
     CHECK (UiTestAccess::graphView (h.ed()));
     CHECK (h.get<juce::Button> ("abB").getToggleState());
-    CHECK (h.window->getWidth() == 1140);
+    CHECK (h.window->getWidth() == Harness::fitWidth (1140));
     bot.click (h.get<juce::Button> ("modeAuto"));
     CHECK_FALSE (UiTestAccess::graphView (h.ed()));
 }
@@ -132,7 +132,7 @@ TEST_CASE ("Reopening the editor shows the saved view and the live state", "[ui]
 TEST_CASE ("Two instances: audio threads run while both editors are used, closed and reopened", "[ui][lifetime][threads]")
 {
     NOVAPITCH_REQUIRE_DISPLAY();
-    Harness a, b (900);
+    Harness a, b (Harness::fitWidth (900));
     std::atomic<bool> run { true };
     std::atomic<int> nonFinite { 0 };
     std::atomic<long> blocks { 0 };
@@ -198,7 +198,7 @@ TEST_CASE ("Two instances: audio threads run while both editors are used, closed
             bot.click (h->get<juce::Button> ("modeAuto"));
             h->closeEditor();
             pump (100);
-            h->openEditor (round == 0 ? 760 : 1140);
+            h->openEditor (Harness::fitWidth (round == 0 ? 760 : 1140));
         }
 
     run = false;

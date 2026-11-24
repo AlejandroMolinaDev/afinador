@@ -77,12 +77,10 @@ TEST_CASE ("Tabs and the Auto / Grafico switch change the view; the view follows
 
     // Host automation of "Modo gráfico" switches the view (editor timer).
     h.setParam (ParamIDs::graphMode, 1.0f);
-    pump (120);
-    CHECK (UiTestAccess::graphView (h.ed()));
+    CHECK (waitFor ([&] { return UiTestAccess::graphView (h.ed()); }));
     CHECK (h.get<juce::Button> ("modeGraph").getToggleState());
     h.setParam (ParamIDs::graphMode, 0.0f);
-    pump (120);
-    CHECK_FALSE (UiTestAccess::graphView (h.ed()));
+    CHECK (waitFor ([&] { return ! UiTestAccess::graphView (h.ed()); }));
     CHECK (h.get<juce::Button> ("modeAuto").getToggleState());
 }
 
@@ -289,14 +287,12 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
     // A sound edit marks it "*", a song edit doesn't; choosing it again reverts.
     const auto current = box.getText();
     h.setParam (ParamIDs::key, 7.0f);
-    pump (300);
+    pump (300); // several UI ticks: still no "*"
     CHECK (box.getText() == current);
     h.setParam (ParamIDs::tolerance, 77.0f);
-    pump (300);
-    CHECK (box.getText() == current + " *");
+    CHECK (waitFor ([&] { return box.getText() == current + " *"; }));
     box.setSelectedItemIndex (items.indexOf (current), juce::sendNotificationSync);
-    pump (300);
-    CHECK (box.getText() == current);
+    CHECK (waitFor ([&] { return box.getText() == current; }));
     CHECK (h.param (ParamIDs::tolerance) != Approx (77.0f));
     CHECK (h.param (ParamIDs::key) == Approx (7.0f)); // the song setting stays
 
@@ -308,8 +304,7 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
     REQUIRE (dialog->isShowing());
     dialog->getTextEditor ("name")->setText (u8 ("Mi voz ñ"));
     bot.click (dialogButton (*dialog, u8 ("Guardar")));
-    pump (100);
-    CHECK (UiTestAccess::saveDialog (h.ed()) == nullptr);
+    CHECK (waitFor ([&] { return UiTestAccess::saveDialog (h.ed()) == nullptr; }));
     CHECK (pm.getUserFolder().getChildFile (u8 ("Mi voz ñ") + PresetManager::kFileExtension).existsAsFile());
     CHECK (box.getText() == u8 ("Mi voz ñ"));
     juce::StringArray after;
@@ -319,8 +314,7 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
 
     // It reloads: change the sound, choose it, the saved value is back.
     h.setParam (ParamIDs::retuneSpeed, 300.0f);
-    pump (100); // the "*" shows up at the next UI tick
-    CHECK (box.getText() == u8 ("Mi voz ñ *"));
+    CHECK (waitFor ([&] { return box.getText() == u8 ("Mi voz ñ *"); })); // at the next UI tick
     box.setSelectedItemIndex (after.indexOf (u8 ("Mi voz ñ")), juce::sendNotificationSync);
     pump (60);
     CHECK (h.param (ParamIDs::retuneSpeed) == Approx (42.0f));
@@ -331,7 +325,7 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
     REQUIRE (dialog != nullptr);
     dialog->getTextEditor ("name")->setText ("No guardar");
     bot.click (dialogButton (*dialog, u8 ("Cancelar")));
-    pump (100);
+    CHECK (waitFor ([&] { return UiTestAccess::saveDialog (h.ed()) == nullptr; }));
     CHECK_FALSE (pm.getUserFolder().getChildFile (juce::String ("No guardar") + PresetManager::kFileExtension).existsAsFile());
 
     // Delete the user preset from the options menu.
@@ -380,8 +374,8 @@ TEST_CASE ("A/B buttons switch sounds; the options menu copies one into the othe
 
     // The host (e.g. a preset of FL's) changing the slot moves the buttons.
     h.p().getPresetManager().selectSlot (1);
-    pump (100);
-    CHECK (b.getToggleState());
+    CHECK (waitFor ([&] { return b.getToggleState(); }));
+    CHECK_FALSE (a.getToggleState());
 }
 
 TEST_CASE ("Options menu: items, accent colour saved with the project", "[ui][options]")
@@ -400,8 +394,7 @@ TEST_CASE ("Options menu: items, accent colour saved with the project", "[ui][op
     }
     const int turquoise = itemId (menu, u8 ("Turquesa"));
     UiTestAccess::chooseOption (h.ed(), turquoise);
-    pump (60);
-    CHECK (UiTestAccess::accent (h.ed()) == juce::Colour (0xff2ec4b6));
+    CHECK (UiTestAccess::accent (h.ed()) == juce::Colour (0xff2ec4b6)); // synchronous
     h.shot ("accent-turquesa");
 
     // Saved in the state: a reopened editor (or a reloaded project) shows it.
@@ -438,8 +431,7 @@ TEST_CASE ("MIDI Learn from the knob menu: a CC moves the knob and the caption s
     const int learn = itemId (menu, u8 ("Asignar a controlador MIDI"));
     REQUIRE (learn > 0);
     UiTestAccess::chooseKnobItem (h.ed(), knob, learn);
-    pump (60);
-    CHECK (caption->getText() == u8 ("Mueve un CC…"));
+    CHECK (waitFor ([&] { return caption->getText() == u8 ("Mueve un CC…"); }));
     {
         const auto report = checkLayout (*h.window);
         INFO (report.summary());
@@ -450,9 +442,9 @@ TEST_CASE ("MIDI Learn from the knob menu: a CC moves the knob and the caption s
     juce::MidiBuffer cc;
     cc.addEvent (juce::MidiMessage::controllerEvent (1, 21, 100), 0);
     h.sendMidi (cc);
-    pump (120);
     auto* param = h.p().getValueTreeState().getParameter (ParamIDs::retuneSpeed);
-    CHECK (param->getValue() == Approx (100.0f / 127.0f).margin (0.01f));
+    CHECK (waitFor ([&] { return std::abs (param->getValue() - 100.0f / 127.0f) < 0.01f; })); // applied by the 30 Hz timer
+    CHECK (waitFor ([&] { return caption->getText() == u8 ("Velocidad"); }));
     CHECK (knob.getSlider().getValue() == Approx (param->convertFrom0to1 (100.0f / 127.0f)).margin (0.5));
     CHECK (caption->getText() == u8 ("Velocidad"));
     auto& badge = get<juce::Label> (knob, "ccBadge");
@@ -462,8 +454,7 @@ TEST_CASE ("MIDI Learn from the knob menu: a CC moves the knob and the caption s
     juce::MidiBuffer cc2;
     cc2.addEvent (juce::MidiMessage::controllerEvent (1, 21, 0), 0);
     h.sendMidi (cc2);
-    pump (120);
-    CHECK (param->getValue() == Approx (0.0f).margin (0.01f));
+    CHECK (waitFor ([&] { return param->getValue() < 0.01f; }));
 
     // The knob with the longest caption, mapped to a 3-digit CC: everything still fits.
     auto& a4 = h.get<LabeledKnob> (ParamIDs::referenceA4);
@@ -471,8 +462,7 @@ TEST_CASE ("MIDI Learn from the knob menu: a CC moves the knob and the caption s
     juce::MidiBuffer cc3;
     cc3.addEvent (juce::MidiMessage::controllerEvent (1, 119, 64), 0);
     h.sendMidi (cc3);
-    pump (120);
-    CHECK (get<juce::Label> (a4, "ccBadge").getText() == "CC119");
+    CHECK (waitFor ([&] { return get<juce::Label> (a4, "ccBadge").getText() == "CC119"; }));
     {
         const auto report = checkLayout (*h.window);
         INFO (report.summary());
@@ -483,7 +473,7 @@ TEST_CASE ("MIDI Learn from the knob menu: a CC moves the knob and the caption s
     // The mapping is part of the project; "Quitar" in the menu removes it.
     CHECK (itemId (UiTestAccess::knobMenu (h.ed(), knob), u8 ("Quitar asignación (CC 21)")) > 0);
     UiTestAccess::chooseOption (h.ed(), itemId (UiTestAccess::optionsMenu (h.ed()), u8 ("Quitar todas las asignaciones MIDI")));
-    pump (60);
+    CHECK (waitFor ([&] { return ! badge.isVisible(); }));
     CHECK (caption->getText() == u8 ("Velocidad"));
     CHECK_FALSE (badge.isVisible());
     CHECK (h.p().getMidiLearn().getCcForParam (param->getParameterIndex()) < 0);
@@ -504,24 +494,21 @@ TEST_CASE ("Escuchar: the button counts the voiced seconds and the key is applie
     const int ten = itemId (menu, u8 ("Escuchar 10 s"));
     REQUIRE (ten > 0);
     UiTestAccess::chooseListen (h.ed(), ten);
-    pump (60);
-    CHECK (listen.getButtonText().startsWith (u8 ("Escuchando 0/10 s")));
+    CHECK (waitFor ([&] { return listen.getButtonText().startsWith (u8 ("Escuchando 0/10 s")); }));
     CHECK (UiTestAccess::statusText (h.ed()).startsWith (u8 ("Escuchando")));
 
     // E major melody, slightly sharp.
     const std::vector<int> melody { 64, 68, 71, 76, 75, 73, 71, 68, 66, 64, 64, 71, 68, 64, 69, 68, 66, 64, 59, 64 };
     h.feed (sungPhrase (melody, 12.0));
-    const auto counting = listen.getButtonText();
-    INFO (counting);
-    CHECK (counting.startsWith (u8 ("Escuchando ")));
-    CHECK_FALSE (counting.startsWith (u8 ("Escuchando 0/")));
+    CHECK (waitFor ([&] { return listen.getButtonText().startsWith (u8 ("Escuchando "))
+                                 && ! listen.getButtonText().startsWith (u8 ("Escuchando 0/")); }));
+    INFO (listen.getButtonText());
 
     // Stop and apply from the menu (the menu now offers it).
     const int stop = itemId (UiTestAccess::listenMenu (h.ed()), u8 ("Detener y aplicar"));
     REQUIRE (stop > 0);
     UiTestAccess::chooseListen (h.ed(), stop);
-    pump (60);
-    CHECK (listen.getButtonText() == u8 ("Escuchar"));
+    CHECK (waitFor ([&] { return listen.getButtonText() == u8 ("Escuchar"); }));
     const auto r = h.p().getLastKeyResult();
     REQUIRE (r.valid);
     CHECK (r.key == 4);
@@ -538,20 +525,18 @@ TEST_CASE ("Sincronizar: disabled alone, enabled with another instance, sends th
     Harness h;
     Bot bot;
     auto& sync = h.get<juce::Button> ("sync");
-    pump (100);
+    pump (150);
     CHECK_FALSE (sync.isEnabled());
     CHECK (sync.getTooltip().contains (u8 ("No hay otras instancias")));
 
     Harness other (PluginEditor::kBaseWidth, false); // a second track, editor closed
-    pump (100);
-    CHECK (sync.isEnabled());
+    CHECK (waitFor ([&] { return sync.isEnabled(); }));
 
     h.setParam (ParamIDs::key, 9.0f);
     h.setParam (ParamIDs::scale, 1.0f);
     h.setParam (ParamIDs::noteDetune (4), -14.0f);
     bot.click (sync);
-    pump (150);
-    CHECK (juce::roundToInt (other.param (ParamIDs::key)) == 9);
+    CHECK (waitFor ([&] { return juce::roundToInt (other.param (ParamIDs::key)) == 9; })); // the other's timer applies it
     CHECK (juce::roundToInt (other.param (ParamIDs::scale)) == 1);
     CHECK (other.param (ParamIDs::noteDetune (4)) == Approx (-14.0f).margin (0.05f));
     CHECK (UiTestAccess::statusText (h.ed()).contains (u8 ("enviadas a 1 instancia más")));
@@ -580,9 +565,8 @@ TEST_CASE ("Meter, footer, note keyboard and MIDI page follow the audio and MIDI
     CHECK (UiTestAccess::target (keyboard) == 4);
     h.shot ("notas-en-vivo");
 
-    pump (300);
-    CHECK_FALSE (UiTestAccess::lastFrame (h.ed()).voiced); // faded out
-    CHECK (UiTestAccess::detected (keyboard) == -1);
+    CHECK (waitFor ([&] { return ! UiTestAccess::lastFrame (h.ed()).voiced; })); // faded out
+    CHECK (waitFor ([&] { return UiTestAccess::detected (keyboard) == -1; }));
 
     const auto footer = UiTestAccess::footerText (h.ed());
     INFO (footer);
@@ -598,14 +582,12 @@ TEST_CASE ("Meter, footer, note keyboard and MIDI page follow the audio and MIDI
     on.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
     on.addEvent (juce::MidiMessage::noteOn (1, 64, 0.8f), 0);
     h.sendMidi (on);
-    pump (100);
-    CHECK (UiTestAccess::heldNotesText (h.ed()) == "C4  E4");
-    CHECK (UiTestAccess::footerText (h.ed()).contains ("MIDI 2"));
+    CHECK (waitFor ([&] { return UiTestAccess::heldNotesText (h.ed()) == "C4  E4"; }));
+    CHECK (waitFor ([&] { return UiTestAccess::footerText (h.ed()).contains ("MIDI 2"); }));
     h.shot ("midi-notas");
     juce::MidiBuffer off;
     off.addEvent (juce::MidiMessage::noteOff (1, 60), 0);
     off.addEvent (juce::MidiMessage::noteOff (1, 64), 0);
     h.sendMidi (off);
-    pump (100);
-    CHECK (UiTestAccess::heldNotesText (h.ed()).isEmpty());
+    CHECK (waitFor ([&] { return UiTestAccess::heldNotesText (h.ed()).isEmpty(); }));
 }

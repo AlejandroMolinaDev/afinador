@@ -54,10 +54,23 @@ TEST_CASE ("Layout: every page and view fits, nothing overlaps or is covered, ev
         REQUIRE (h.window->getWidth() == width);
         CHECK (h.content().getTransform().mat00 == Approx (width / 760.0f).margin (1.0e-4f));
 
+        // This test is about geometry at every scale. At 150 / 200 % the window can be
+        // larger than a CI screen (1024 x 768), so buttons that are off-screen are
+        // pressed directly; real clicks are checked wherever the window is visible.
         Bot bot;
+        auto press = [&] (juce::Button& b) {
+            auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+            if (display != nullptr && display->userBounds.toNearestInt().contains (b.getScreenBounds()))
+                bot.click (b);
+            else
+            {
+                b.triggerClick();
+                pump (40);
+            }
+        };
         for (int page = 0; page < UiTestAccess::numPages(); ++page)
         {
-            bot.click (h.get<juce::Button> ("tab" + juce::String (page)));
+            press (h.get<juce::Button> ("tab" + juce::String (page)));
             REQUIRE (UiTestAccess::currentPage (h.ed()) == page);
             for (int other = 0; other < UiTestAccess::numPages(); ++other)
                 CHECK (UiTestAccess::page (h.ed(), other).isShowing() == (other == page));
@@ -67,26 +80,25 @@ TEST_CASE ("Layout: every page and view fits, nothing overlaps or is covered, ev
         }
 
         // Harmony: every voice, and a voice in semitone mode (other knob set).
-        bot.click (h.get<juce::Button> ("tab4"));
+        press (h.get<juce::Button> ("tab4"));
         for (int v = 1; v <= 4; ++v)
         {
-            bot.click (h.get<juce::Button> ("voice" + juce::String (v)));
+            press (h.get<juce::Button> ("voice" + juce::String (v)));
             checkView (h, scaleText + " · voz " + juce::String (v), issues, controls);
         }
         h.setParam (ParamIDs::harmonyVoice ("hvMode", 4), 2.0f);
         checkView (h, scaleText + " · voz 4 semitonos", issues, controls);
 
-        // Graphical mode: empty, then with objects and a selected note.
-        bot.click (h.get<juce::Button> ("modeGraph"));
+        // Graphical mode: empty, then with objects and a selection (inspector on).
+        press (h.get<juce::Button> ("modeGraph"));
         REQUIRE (UiTestAccess::graphView (h.ed()));
         checkView (h, scaleText + " · grafico vacio", issues, controls);
         addGraphContent (h);
         auto& graph = UiTestAccess::graph (h.ed());
         UiTestAccess::setView (graph, 0.0, 3.2, 64.0f, 14.0f);
         pump (80);
-        auto& roll = UiTestAccess::roll (graph);
-        bot.click (roll, UiTestAccess::rollPoint (graph, 0.7, 57.0f)); // select tool: selects the first note
-        CHECK (UiTestAccess::selection (graph).size() == 1);
+        bot.key (graph, juce::KeyPress ('a', Bot::command(), 0)); // select all
+        CHECK (UiTestAccess::selection (graph).size() >= 1);
         checkView (h, scaleText + " · grafico con seleccion", issues, controls);
         if (width == 760 || width == 570)
             h.shot ("layout-grafico-" + juce::String (juce::roundToInt (100.0 * width / PluginEditor::kBaseWidth)));
@@ -121,17 +133,35 @@ TEST_CASE ("Resize: the corner keeps the aspect ratio and the 75-200 % limits", 
         CHECK (h.content().getTransform().mat00 == Approx (h.window->getWidth() / 760.0f).margin (1.0e-4f));
     };
 
-    dragCorner (300.0f, 40.0f); // mostly horizontal: height follows
-    CHECK (h.window->getWidth() > 900);
-    checkAspect();
-    dragCorner (2000.0f, 2000.0f); // beyond 200 %
-    CHECK (h.window->getWidth() <= 1520);
-    CHECK (h.window->getHeight() <= 1280);
-    checkAspect();
+    // Grow as far as the screen allows (CI desktops can be 1024 x 768): mostly
+    // horizontal, the height follows.
+    const int room = Harness::fitWidth (PluginEditor::kBaseWidth * 2) - h.window->getWidth();
+    INFO ("room to grow on this screen: " << room << " px");
+    if (room > 40)
+    {
+        dragCorner (static_cast<float> (room - 10), 10.0f);
+        CHECK (h.window->getWidth() > PluginEditor::kBaseWidth + 20);
+        CHECK (h.window->getWidth() <= Harness::fitWidth (PluginEditor::kBaseWidth * 2));
+        checkAspect();
+    }
     dragCorner (-3000.0f, -3000.0f); // below 75 %
-    CHECK (h.window->getWidth() >= 570);
-    CHECK (h.window->getHeight() >= 480);
+    CHECK (h.window->getWidth() == 570);
+    CHECK (h.window->getHeight() == 480);
     checkAspect();
+    dragCorner (60.0f, 0.0f);
+    CHECK (h.window->getWidth() > 570);
+    checkAspect();
+
+    // Beyond 200 % (as a host or a drag past the screen would ask): clamped to 1520 x 1280.
+    {
+        auto* c = h.window->getConstrainer();
+        REQUIRE (c != nullptr);
+        juce::Rectangle<int> huge (0, 0, 4000, 3000);
+        c->checkBounds (huge, h.window->getBounds(), { 0, 0, 8000, 8000 }, false, false, true, true);
+        CHECK (huge.getWidth() <= 1520);
+        CHECK (huge.getHeight() <= 1280);
+        CHECK (static_cast<double> (huge.getWidth()) / huge.getHeight() == Approx (760.0 / 640.0).margin (0.01));
+    }
 
     // A host asking for an odd size through the constrainer gets a valid one.
     auto* constrainer = h.window->getConstrainer();
@@ -141,7 +171,7 @@ TEST_CASE ("Resize: the corner keeps the aspect ratio and the 75-200 % limits", 
     CHECK (static_cast<double> (wanted.getWidth()) / wanted.getHeight() == Approx (760.0 / 640.0).margin (0.01));
 
     // After resizing, the layout is still sound (real clicks reach the tabs).
-    h.setWidth (1000);
+    h.setWidth (Harness::fitWidth (1000));
     bot.click (h.get<juce::Button> ("tab3"));
     CHECK (UiTestAccess::currentPage (h.ed()) == 3);
     const auto report = checkLayout (*h.window);
