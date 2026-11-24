@@ -21,6 +21,22 @@ constexpr double kMinNoteSeconds = 0.02;
 constexpr double kMinViewSeconds = 0.25, kMaxViewSeconds = 600.0;
 const juce::Colour kCaptureRed { 0xffe5484d };
 
+/** Width of a slider's value box so its widest value text fits (real font). */
+int valueBoxWidth (juce::Slider& s)
+{
+    int width = 56;
+    for (auto* child : s.getChildren())
+        if (auto* label = dynamic_cast<juce::Label*> (child))
+        {
+            auto& lf = label->getLookAndFeel();
+            const auto font = lf.getLabelFont (*label);
+            const int border = lf.getLabelBorderSize (*label).getLeftAndRight();
+            for (const double v : { s.getMinimum(), s.getMaximum(), 0.5 * (s.getMinimum() + s.getMaximum()), s.getDoubleClickReturnValue() })
+                width = juce::jmax (width, static_cast<int> (std::ceil (juce::GlyphArrangement::getStringWidth (font, s.getTextFromValue (v)))) + border + 6);
+        }
+    return width;
+}
+
 bool isBlackKey (int note)
 {
     const int pc = ((note % 12) + 12) % 12;
@@ -1490,7 +1506,13 @@ void GraphEditor::resized()
     inspector.removeFromLeft (118); // caption
     const int w = inspector.getWidth() / 3;
     for (auto* s : { &retuneSlider, &vibratoSlider, &formantSlider })
+    {
+        // The value box fits its widest text with the platform's font ("+12.0 st"
+        // is wider on Windows / macOS than on Linux); the track takes the rest.
+        if (const int box = valueBoxWidth (*s); box != s->getTextBoxWidth())
+            s->setTextBoxStyle (juce::Slider::TextBoxRight, false, box, 20);
         s->setBounds (inspector.removeFromLeft (w).withTrimmedLeft (66).reduced (2, 0));
+    }
 }
 
 void GraphEditor::paint (juce::Graphics& g)

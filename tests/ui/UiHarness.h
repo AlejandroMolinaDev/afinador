@@ -317,17 +317,37 @@ private:
         });
         if (juce::Desktop::getInstance().getComponent (juce::Desktop::getInstance().getNumComponents() - 1) != &top)
         {
-            top.toFront (false);
+            top.toFront (top.isCurrentlyModal()); // a dialog comes up active
             pump (20);
         }
+    }
+
+    /** Visible desktop windows in z-order (front last), for failure messages. */
+    static juce::String describeDesktop()
+    {
+        juce::StringArray lines;
+        auto& desktop = juce::Desktop::getInstance();
+        for (int i = 0; i < desktop.getNumComponents(); ++i)
+            if (auto* w = desktop.getComponent (i); w != nullptr && w->isVisible())
+                lines.add (juce::String (i) + ": " + typeid (*w).name() + " " + w->getScreenBounds().toString()
+                           + (w->isAlwaysOnTop() ? " always-on-top" : "") + (w->isCurrentlyModal() ? " modal" : ""));
+        if (auto* display = desktop.getDisplays().getPrimaryDisplay())
+            lines.add ("display user area " + display->userBounds.toString());
+        return lines.joinIntoString ("\n");
     }
 
     static void checkHit (juce::Component& c, juce::Point<float> p)
     {
         raise (c);
         auto& top = *c.getTopLevelComponent();
-        // The window system must also see this window at that point (not covered by another window).
-        CHECK (top.contains (top.getLocalPoint (&c, p)));
+        // The window system must also see this window at that point (not covered by
+        // another window). Window ordering is asynchronous on macOS: wait for it, as
+        // a user can't click a window before it is shown.
+        const auto inTop = top.getLocalPoint (&c, p);
+        const bool visibleThere = waitFor ([&] { return top.contains (inTop); }, 1500);
+        INFO ("window " << typeid (top).name() << " at screen point " << top.localPointToGlobal (inTop).toString()
+                        << "; desktop windows:\n" << describeDesktop());
+        CHECK (visibleThere);
         auto* under = hit (c, p);
         INFO ("click target: " << c.getComponentID() << " " << typeid (c).name() << " at " << p.toString()
                                << ", reached: " << (under != nullptr ? under->getComponentID() + " " + typeid (*under).name() : juce::String ("nothing")));
