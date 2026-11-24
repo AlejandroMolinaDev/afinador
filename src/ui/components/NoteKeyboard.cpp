@@ -65,6 +65,8 @@ NoteKeyboard::NoteKeyboard (juce::AudioProcessorValueTreeState& s) : state (s)
         for (int pc = 0; pc < 12; ++pc)
             setState (pc, static_cast<int> (dsp::NoteState::Active));
     };
+    resetButton.setComponentID ("notesReset");
+    allActiveButton.setComponentID ("notesAllActive");
     for (auto* b : { &resetButton, &allActiveButton })
     {
         b->setColour (juce::TextButton::buttonColourId, Palette::panelRaised);
@@ -127,15 +129,19 @@ void NoteKeyboard::askExactDetune (int pc)
     detuneDialog->addTextEditor ("cents", juce::String (getDetune (pc), 1));
     detuneDialog->addButton (u8 ("Aceptar"), 1, juce::KeyPress (juce::KeyPress::returnKey));
     detuneDialog->addButton (u8 ("Cancelar"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    detuneDialog->enterModalState (true, juce::ModalCallbackFunction::create ([this, pc] (int result) {
-        if (result == 1 && detuneDialog != nullptr)
-        {
-            const auto text = detuneDialog->getTextEditorContents ("cents").replaceCharacter (',', '.')
-                                  .replace (u8 ("−"), "-").retainCharacters ("0123456789.+-");
-            setDetune (pc, text.getFloatValue());
-        }
-        detuneDialog.reset();
-    }));
+    // May be called after the keyboard is deleted (editor closed with the dialog open).
+    detuneDialog->enterModalState (true, juce::ModalCallbackFunction::create (
+        [safe = juce::Component::SafePointer<NoteKeyboard> (this), pc] (int result) {
+            if (safe == nullptr)
+                return;
+            if (result == 1 && safe->detuneDialog != nullptr)
+            {
+                const auto text = safe->detuneDialog->getTextEditorContents ("cents").replaceCharacter (',', '.')
+                                      .replace (u8 ("−"), "-").retainCharacters ("0123456789.+-");
+                safe->setDetune (pc, text.getFloatValue());
+            }
+            safe->detuneDialog.reset();
+        }));
 }
 
 int NoteKeyboard::getState (int pitchClass) const
@@ -188,6 +194,49 @@ int NoteKeyboard::pitchClassAt (juce::Point<float> p) const
     return -1;
 }
 
+namespace
+{
+constexpr float kQuickDetunes[] = { -50.0f, -31.0f, -25.0f, -14.0f, 0.0f, 2.0f, 14.0f, 25.0f, 50.0f };
+} // namespace
+
+juce::PopupMenu NoteKeyboard::createKeyMenu (int pc) const
+{
+    juce::PopupMenu detune;
+    for (size_t i = 0; i < std::size (kQuickDetunes); ++i)
+    {
+        const float c = kQuickDetunes[i];
+        const auto label = std::abs (c) < 0.01f ? u8 ("Sin desafinación (0 ¢)") : (c > 0.0f ? "+" : "") + juce::String (juce::roundToInt (c)) + u8 (" ¢");
+        detune.addItem (100 + static_cast<int> (i), label, true, std::abs (getDetune (pc) - c) < 0.05f);
+    }
+    detune.addSeparator();
+    detune.addItem (200, u8 ("Otro valor…"));
+
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&getLookAndFeel()); // JUCE menus don't inherit the target's look
+    menu.addSectionHeader (u8 (kNames[static_cast<size_t> (pc)]));
+    for (int s = 0; s < dsp::kNumNoteStates; ++s)
+        menu.addItem (s + 1, u8 (kStateNames[static_cast<size_t> (s)]), true, getState (pc) == s);
+    menu.addSeparator();
+    menu.addSubMenu (u8 ("Desafinación (") + (getDetune (pc) > 0.05f ? "+" : "") + juce::String (getDetune (pc), 1) + u8 (" ¢)"), detune);
+    menu.addItem (300, u8 ("Quitar todas las desafinaciones"));
+    return menu;
+}
+
+void NoteKeyboard::keyMenuItemChosen (int pc, int result)
+{
+    if (pc < 0 || pc >= 12)
+        return;
+    if (result >= 1 && result <= dsp::kNumNoteStates)
+        setState (pc, result - 1);
+    else if (result >= 100 && result < 100 + static_cast<int> (std::size (kQuickDetunes)))
+        setDetune (pc, kQuickDetunes[static_cast<size_t> (result - 100)]);
+    else if (result == 200)
+        askExactDetune (pc);
+    else if (result == 300)
+        for (int k = 0; k < 12; ++k)
+            setDetune (k, 0.0f);
+}
+
 void NoteKeyboard::mouseDown (const juce::MouseEvent& e)
 {
     const int pc = pitchClassAt (e.position);
@@ -195,35 +244,11 @@ void NoteKeyboard::mouseDown (const juce::MouseEvent& e)
         return;
     if (e.mods.isPopupMenu())
     {
-        static constexpr float kQuick[] = { -50.0f, -31.0f, -25.0f, -14.0f, 0.0f, 2.0f, 14.0f, 25.0f, 50.0f };
-        juce::PopupMenu detune;
-        for (size_t i = 0; i < std::size (kQuick); ++i)
-        {
-            const float c = kQuick[i];
-            const auto label = std::abs (c) < 0.01f ? u8 ("Sin desafinación (0 ¢)") : (c > 0.0f ? "+" : "") + juce::String (juce::roundToInt (c)) + u8 (" ¢");
-            detune.addItem (100 + static_cast<int> (i), label, true, std::abs (getDetune (pc) - c) < 0.05f);
-        }
-        detune.addSeparator();
-        detune.addItem (200, u8 ("Otro valor…"));
-
-        juce::PopupMenu menu;
-        menu.addSectionHeader (u8 (kNames[static_cast<size_t> (pc)]));
-        for (int s = 0; s < dsp::kNumNoteStates; ++s)
-            menu.addItem (s + 1, u8 (kStateNames[static_cast<size_t> (s)]), true, getState (pc) == s);
-        menu.addSeparator();
-        menu.addSubMenu (u8 ("Desafinación (") + (getDetune (pc) > 0.05f ? "+" : "") + juce::String (getDetune (pc), 1) + u8 (" ¢)"), detune);
-        menu.addItem (300, u8 ("Quitar todas las desafinaciones"));
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [this, pc] (int result) {
-            if (result >= 1 && result <= dsp::kNumNoteStates)
-                setState (pc, result - 1);
-            else if (result >= 100 && result < 100 + static_cast<int> (std::size (kQuick)))
-                setDetune (pc, kQuick[static_cast<size_t> (result - 100)]);
-            else if (result == 200)
-                askExactDetune (pc);
-            else if (result == 300)
-                for (int k = 0; k < 12; ++k)
-                    setDetune (k, 0.0f);
-        });
+        createKeyMenu (pc).showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                                          [safe = juce::Component::SafePointer<NoteKeyboard> (this), pc] (int result) {
+                                              if (safe != nullptr)
+                                                  safe->keyMenuItemChosen (pc, result);
+                                          });
         return;
     }
     setState (pc, (getState (pc) + 1) % dsp::kNumNoteStates);

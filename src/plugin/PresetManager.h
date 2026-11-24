@@ -45,6 +45,12 @@ public:
     bool loadNext (int direction); // +1 / -1, wraps around
 
     juce::File getUserFolder() const { return userFolder; }
+    /** Tests and tools use a temporary folder (never the user's Documents). */
+    void setUserFolder (const juce::File& folder)
+    {
+        userFolder = folder;
+        cachedPresetName = {};
+    }
     static juce::File defaultUserFolder();
 
     /** Parameters that presets never touch (song settings). */

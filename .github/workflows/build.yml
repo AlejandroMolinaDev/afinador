@@ -36,7 +36,9 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Unit tests
+      # Unit tests + UI tests (the real editor in a desktop window, driven by mouse
+      # and keyboard events; screenshots in build/ui-shots).
+      - name: Unit and UI tests
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Host test (VST3, FL-like scenarios)
@@ -44,6 +46,7 @@ jobs:
         run: |
           HT=$(find build/tools -name 'NovaPitchHostTest.exe' -type f | head -1)
           "$HT" "$ART/VST3/NovaPitch.vst3" --editor
+          "$HT" "$ART/VST3/NovaPitch.vst3" --show-editor host-window
 
       - name: CPU benchmark
         shell: bash
@@ -141,6 +144,14 @@ jobs:
           name: UI-snapshots-Windows
           path: snapshots/*.png
 
+      - name: Upload UI test screenshots
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: UI-test-shots-Windows
+          path: build/ui-shots/*.png
+          if-no-files-found: ignore
+
   # ---------------------------------------------------------------------------
   # macOS Universal (arm64 + x86_64) — FL Studio for Mac (VST3 + AU + CLAP),
   # native on Apple Silicon and on Intel / Rosetta.
@@ -159,7 +170,7 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel "$(sysctl -n hw.ncpu)"
 
-      - name: Unit tests
+      - name: Unit and UI tests
         run: ctest --test-dir build -C Release --output-on-failure
 
       - name: CPU benchmark
@@ -213,6 +224,8 @@ jobs:
           HT=$(find build/tools -name NovaPitchHostTest -type f -perm -u+x | head -1)
           "$HT" "$ART/VST3/NovaPitch.vst3" --editor
           "$HT" ~/Library/Audio/Plug-Ins/Components/NovaPitch.component --editor
+          "$HT" "$ART/VST3/NovaPitch.vst3" --show-editor host-window
+          "$HT" ~/Library/Audio/Plug-Ins/Components/NovaPitch.component --show-editor host-window
 
       - name: pluginval (VST3 + AU, strictness 10)
         run: |
@@ -290,6 +303,14 @@ jobs:
           name: UI-snapshots-macOS
           path: snapshots/*.png
 
+      - name: Upload UI test screenshots
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: UI-test-shots-macOS
+          path: build/ui-shots/*.png
+          if-no-files-found: ignore
+
   # ---------------------------------------------------------------------------
   # Linux x64 — optional target, cheap early warning for build/test breakage.
   # ---------------------------------------------------------------------------
@@ -305,7 +326,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libasound2-dev libx11-dev libxrandr-dev libxcursor-dev \
-            libxinerama-dev libxext-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev xvfb
+            libxinerama-dev libxext-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev xvfb imagemagick
 
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -313,13 +334,31 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Unit tests
-        run: ctest --test-dir build --output-on-failure
+      # The UI tests open real windows: a virtual display (Xvfb) large enough for 200 %.
+      - name: Unit and UI tests
+        run: xvfb-run -a -s "-screen 0 1920x1600x24" ctest --test-dir build --output-on-failure
 
       - name: Host test (VST3, FL-like scenarios)
         run: |
           HT=$(find build/tools -name NovaPitchHostTest -type f -perm -u+x | head -1)
           xvfb-run -a "$HT" "$ART/VST3/NovaPitch.vst3" --editor
+
+      # The built VST3 draws its editor inside a host window (100 % and 200 %) while
+      # audio runs; the screen is captured and checked for the plugin's colours.
+      - name: Plugin editor in a real host window (screen capture)
+        run: |
+          HT=$(find build/tools -name NovaPitchHostTest -type f -perm -u+x | head -1)
+          xvfb-run -a -s "-screen 0 1920x1600x24" "$HT" "$ART/VST3/NovaPitch.vst3" --show-editor host-window
+
+      - name: Upload UI test screenshots
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: UI-test-shots-Linux
+          path: |
+            build/ui-shots/*.png
+            host-window/*.png
+          if-no-files-found: ignore
 
       - name: CPU benchmark
         run: |

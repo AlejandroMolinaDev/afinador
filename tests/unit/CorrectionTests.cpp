@@ -369,6 +369,30 @@ TEST_CASE ("Formants are preserved under transposition, or follow it when preser
     }
 }
 
+TEST_CASE ("Formant link: the envelope follows the transposition while formants stay preserved", "[formant]")
+{
+    JuceFixture fixture;
+    const int mode = GENERATE (1, 2); // PSOLA (Tracking), HQ
+    const double sr = 48000.0;
+    const auto in = vowel (200.0f, sr, 1.5);
+    const double cIn = centroid (in, sr);
+
+    for (const float transpose : { -7.0f, 7.0f })
+    {
+        NovaPitchProcessor p;
+        setParam (p, ParamIDs::qualityMode, static_cast<float> (mode));
+        setParam (p, ParamIDs::transpose, transpose);
+        setParam (p, ParamIDs::formantPreserve, 1.0f);
+        setParam (p, ParamIDs::formantLink, 1.0f);
+        ignoreAllNotes (p);
+        const auto out = runProcessor (p, in, sr);
+        const double ratio = centroid (out, sr) / cIn;
+        INFO ("mode " << mode << " transpose " << transpose << " centroid ratio " << ratio);
+        CHECK ((transpose > 0.0f ? ratio > 1.15 : ratio < 0.87)); // "monster" / "chipmunk" on purpose
+        CHECK (maxAbsCentsAfter (analyse (out, sr), 0.4, 200.0f * std::exp2 (transpose / 12.0f)) < 8.0f);
+    }
+}
+
 TEST_CASE ("Formant shift moves the spectral envelope without changing pitch", "[formant]")
 {
     JuceFixture fixture;

@@ -9,11 +9,18 @@
 // regressions automatically in CI on Windows, macOS and Linux.
 //
 // Usage: NovaPitchHostTest <path/to/NovaPitch.vst3|.component> [--editor]
+//        NovaPitchHostTest <plugin> --show-editor <screenshot-dir>
+//
+// --show-editor: the plugin's own editor (drawn by the plugin binary, embedded
+// through the plugin format like in a DAW) in a host window on the desktop at
+// 100 % and 200 % while audio runs; on Linux each state is captured from the
+// screen (ImageMagick `import`) and checked for the plugin's colours.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "signals/SignalGenerators.h"
+#include "support/XvfbSupport.h"
 
 #include <atomic>
 #include <cmath>
@@ -579,15 +586,131 @@ void runAll (const juce::String& path, bool withEditor)
 
     plugin.reset();
 }
+//==============================================================================
+/** Share of pixels of `area` close to `colour` (per channel within `tolerance`). */
+double colourShare (const juce::Image& image, juce::Rectangle<int> area, juce::Colour colour, int tolerance)
+{
+    area = area.getIntersection (image.getBounds());
+    if (area.isEmpty())
+        return 0.0;
+    const juce::Image::BitmapData data (image, juce::Image::BitmapData::readOnly);
+    long hits = 0, total = 0;
+    for (int y = area.getY(); y < area.getBottom(); y += 2)
+        for (int x = area.getX(); x < area.getRight(); x += 2)
+        {
+            const auto c = data.getPixelColour (x, y);
+            ++total;
+            hits += (std::abs (c.getRed() - colour.getRed()) <= tolerance && std::abs (c.getGreen() - colour.getGreen()) <= tolerance
+                     && std::abs (c.getBlue() - colour.getBlue()) <= tolerance) ? 1 : 0;
+        }
+    return total > 0 ? static_cast<double> (hits) / static_cast<double> (total) : 0.0;
+}
+
+/** Screen capture with ImageMagick (Linux / X11). Empty image if unavailable. */
+juce::Image captureScreen (const juce::File& file)
+{
+   #if JUCE_LINUX || JUCE_BSD
+    juce::ChildProcess import;
+    if (import.start (juce::StringArray { "import", "-window", "root", file.getFullPathName() }))
+    {
+        import.waitForProcessToFinish (20000);
+        return juce::ImageFileFormat::loadFrom (file);
+    }
+   #else
+    juce::ignoreUnused (file);
+   #endif
+    return {};
+}
+
+/** The plugin's own editor in a host window, at 100 % and 200 %, with audio running. */
+void showEditor (const juce::String& path, const juce::File& shotsDir)
+{
+    Host host;
+    if (! host.load (path))
+    {
+        report ("load plugin", false, "no plugin found in " + path);
+        return;
+    }
+    auto plugin = host.create (48000.0, 256);
+    report ("instantiate", plugin != nullptr);
+    if (plugin == nullptr || ! plugin->hasEditor())
+        return;
+    prepare (*plugin, 48000.0, 256);
+
+    std::atomic<bool> running { true };
+    std::thread audio ([&] {
+        // A sung phrase in a loop, so the meter, trace and note keyboard are live.
+        std::vector<float> phrase;
+        for (const double midi : { 57.3, 59.0, 60.2, 64.0, 62.0, 60.0 })
+        {
+            const auto note = novapitch::signals::vibratoSine (440.0 * std::exp2 ((midi - 69.0) / 12.0), 5.5, 25.0, 48000.0, 0.4, 0.4f);
+            phrase.insert (phrase.end(), note.begin(), note.end());
+        }
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        for (size_t pos = 0; running.load(); pos = (pos + 256 + 256 <= phrase.size()) ? pos + 256 : 0)
+        {
+            buffer.copyFrom (0, 0, phrase.data() + pos, 256);
+            buffer.copyFrom (1, 0, phrase.data() + pos, 256);
+            plugin->processBlock (buffer, midi);
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+    });
+
+    std::unique_ptr<juce::AudioProcessorEditor> editor (plugin->createEditorAndMakeActive());
+    report ("create editor (embedded plugin view)", editor != nullptr);
+    if (editor != nullptr)
+    {
+        juce::DocumentWindow window ("NovaPitch - host window", juce::Colour (0xff2b2b2b), 0, true);
+        window.setUsingNativeTitleBar (false);
+        window.setTitleBarHeight (22);
+        window.setContentNonOwned (editor.get(), true);
+        window.setTopLeftPosition (8, 8);
+        window.setVisible (true);
+        shotsDir.createDirectory();
+
+        for (const int scale : { 100, 200 })
+        {
+            editor->setSize (760 * scale / 100, 640 * scale / 100); // host resize -> checkSizeConstraint / onSize
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (2500);
+            const auto area = editor->getScreenBounds();
+            const bool sized = std::abs (area.getWidth() - 760 * scale / 100) <= 2 && std::abs (area.getHeight() - 640 * scale / 100) <= 2;
+            report ("editor in a host window at " + juce::String (scale) + " %", sized && editor->isShowing(),
+                    juce::String (area.getWidth()) + " x " + juce::String (area.getHeight()));
+
+            const auto file = shotsDir.getChildFile ("host-window-" + juce::String (scale) + ".png");
+            const auto image = captureScreen (file);
+            if (image.isNull())
+            {
+                std::cout << "  (no screen capture on this platform: skipped)" << std::endl;
+                continue;
+            }
+            // The plugin drew itself: dark NovaPitch background / panels and the accent colour.
+            const double dark = colourShare (image, area, juce::Colour (0xff101317), 6) + colourShare (image, area, juce::Colour (0xff181d23), 6);
+            const double accent = colourShare (image, area, juce::Colour (0xffff6b4a), 40);
+            report ("screen shows the plugin at " + juce::String (scale) + " %", dark > 0.35 && accent > 0.0015,
+                    "dark " + juce::String (dark * 100.0, 1) + " %, accent " + juce::String (accent * 100.0, 2) + " % -> "
+                        + file.getFileName());
+        }
+        window.clearContentComponent();
+        editor.reset();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+    }
+    running = false;
+    audio.join();
+    plugin->releaseResources();
+    plugin.reset();
+}
 } // namespace
 
 int main (int argc, char* argv[])
 {
+    novapitch::test::prepareX11Display(); // bare Xvfb in CI: see XvfbSupport.h
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     if (argc < 2)
     {
-        std::cout << "Usage: NovaPitchHostTest <plugin path> [--editor]" << std::endl;
+        std::cout << "Usage: NovaPitchHostTest <plugin path> [--editor | --show-editor <screenshot dir>]" << std::endl;
         return 2;
     }
 
@@ -597,6 +720,13 @@ int main (int argc, char* argv[])
         withEditor = withEditor || juce::String (argv[i]) == "--editor";
 
     std::cout << "NovaPitch host test: " << path << std::endl;
+    for (int i = 2; i + 1 < argc; ++i)
+        if (juce::String (argv[i]) == "--show-editor")
+        {
+            showEditor (path, juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1]));
+            std::cout << (failures == 0 ? "EDITOR WINDOW TEST PASSED" : juce::String (failures) + " EDITOR WINDOW CHECK(S) FAILED") << std::endl;
+            return failures == 0 ? 0 : 1;
+        }
     runAll (path, withEditor);
 
     std::cout << (failures == 0 ? "ALL HOST TESTS PASSED" : juce::String (failures) + " HOST TEST(S) FAILED") << std::endl;

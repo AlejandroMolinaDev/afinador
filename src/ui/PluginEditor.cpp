@@ -73,6 +73,10 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     else
         hostDescription = host.getHostDescription();
 
+    content.setComponentID ("content");
+    meter.setComponentID ("meter");
+    trace.setComponentID ("trace");
+    vibratoDisplay.setComponentID ("vibratoDisplay");
     addAndMakeVisible (content);
     content.addAndMakeVisible (meter);
     content.addAndMakeVisible (trace);
@@ -153,6 +157,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     pages[3].addAndMakeVisible (vibratoDisplay);
     vibShapeBox.addItemList ({ u8 ("Seno"), u8 ("Triángulo"), u8 ("Cuadrada"), u8 ("Sierra") }, 1);
     vibShapeBox.setTooltip (u8 ("Forma del vibrato artificial."));
+    vibShapeBox.setComponentID (ParamIDs::vibShape);
     vibShapeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (state, ParamIDs::vibShape, vibShapeBox);
     pages[3].addAndMakeVisible (vibShapeBox);
     vibratoDisplay.setAccent (lookAndFeel.getAccent());
@@ -185,6 +190,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
 
         auto& b = voiceButtons[static_cast<size_t> (v)];
         b.setButtonText (u8 ("Voz ") + juce::String (v + 1));
+        b.setComponentID ("voice" + juce::String (v + 1));
         b.setRadioGroupId (2002);
         b.setClickingTogglesState (true);
         b.setColour (juce::TextButton::buttonColourId, Palette::panelRaised);
@@ -226,6 +232,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
 
     // Notes of the scale (Escala / Activa / Ignorar / Eliminar) ---------------------
     noteKeyboard = std::make_unique<NoteKeyboard> (state);
+    noteKeyboard->setComponentID ("noteKeyboard");
     pages[1].addAndMakeVisible (*noteKeyboard);
 
     // Tabs --------------------------------------------------------------------------
@@ -239,6 +246,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
         t.setColour (juce::TextButton::buttonColourId, Palette::panel);
         t.setColour (juce::TextButton::textColourOffId, Palette::textMuted);
         t.setColour (juce::TextButton::textColourOnId, Palette::background);
+        t.setComponentID ("tab" + juce::String (static_cast<int> (i)));
         t.onClick = [this, i] { if (tabs[i].getToggleState()) showPage (static_cast<Page> (i)); };
         content.addAndMakeVisible (t);
         content.addChildComponent (pages[i]);
@@ -262,6 +270,7 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     {
         auto& b = abButtons[static_cast<size_t> (i)];
         b.setButtonText (i == 0 ? "A" : "B");
+        b.setComponentID (i == 0 ? "abA" : "abB");
         b.setTooltip (u8 ("Comparación A/B: guarda dos versiones del sonido y alterna entre ellas (la tonalidad, la escala "
                           "y las notas no cambian). En ··· puedes copiar una en la otra. Se guarda con el proyecto."));
         b.setRadioGroupId (1004);
@@ -286,6 +295,11 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     optionsButton.setButtonText (u8 ("···"));
     optionsButton.setTooltip (u8 ("Opciones: color de acento, carpeta de presets, borrar preset"));
     optionsButton.onClick = [this] { showOptionsMenu(); };
+    presetBox.setComponentID ("presetBox");
+    prevPreset.setComponentID ("presetPrev");
+    nextPreset.setComponentID ("presetNext");
+    savePreset.setComponentID ("presetSave");
+    optionsButton.setComponentID ("options");
     for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &prevPreset, &nextPreset, &savePreset, &optionsButton })
         content.addAndMakeVisible (c);
     refreshPresetBox();
@@ -305,11 +319,14 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
         b->setColour (juce::TextButton::textColourOnId, Palette::background);
         content.addAndMakeVisible (b);
     }
+    autoButton.setComponentID ("modeAuto");
+    graphButton.setComponentID ("modeGraph");
     autoButton.setConnectedEdges (juce::Button::ConnectedOnRight);
     graphButton.setConnectedEdges (juce::Button::ConnectedOnLeft);
     autoButton.onClick = [this] { if (autoButton.getToggleState()) setGraphMode (false); };
     graphButton.onClick = [this] { if (graphButton.getToggleState()) setGraphMode (true); };
     graphEditor = std::make_unique<GraphEditor> (p);
+    graphEditor->setComponentID ("graphEditor");
     content.addChildComponent (*graphEditor);
 
     // Key detection + instance sync (over the Tonalidad / Escala labels) -------------
@@ -317,6 +334,8 @@ PluginEditor::PluginEditor (NovaPitchProcessor& p)
     listenButton.setTooltip (u8 ("Detecta la tonalidad escuchando la voz unos segundos (o desde la captura del modo "
                                  "gráfico) y ajusta Tonalidad y Escala."));
     listenButton.onClick = [this] { showListenMenu(); };
+    listenButton.setComponentID ("listen");
+    syncButton.setComponentID ("sync");
     syncButton.setButtonText (u8 ("Sincronizar"));
     syncButton.onClick = [this] {
         const int n = processor.syncToOtherInstances();
@@ -374,6 +393,7 @@ void PluginEditor::refreshPresetBox()
     auto& pm = processor.getPresetManager();
     const auto presets = pm.getPresets();
     presetBox.clear (juce::dontSendNotification);
+    shownModified = pm.isModified(); // e.g. just saved / loaded: no stale "*"
 
     bool userHeading = false;
     presetBox.addSectionHeading (u8 ("Fábrica"));
@@ -406,15 +426,20 @@ void PluginEditor::showSaveDialog()
     saveDialog->addTextEditor ("name", current == PresetManager::kDefaultPresetName ? juce::String() : current);
     saveDialog->addButton (u8 ("Guardar"), 1, juce::KeyPress (juce::KeyPress::returnKey));
     saveDialog->addButton (u8 ("Cancelar"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    saveDialog->enterModalState (true, juce::ModalCallbackFunction::create ([this] (int result) {
-        if (result == 1 && saveDialog != nullptr)
-        {
-            const auto name = saveDialog->getTextEditorContents ("name");
-            if (processor.getPresetManager().saveUserPreset (name))
-                refreshPresetBox();
-        }
-        saveDialog.reset();
-    }));
+    // The callback can arrive after the editor is gone (the host closed the window
+    // with the dialog open): never touch `this` without the SafePointer.
+    saveDialog->enterModalState (true, juce::ModalCallbackFunction::create (
+        [safe = juce::Component::SafePointer<PluginEditor> (this)] (int result) {
+            if (safe == nullptr)
+                return;
+            if (result == 1 && safe->saveDialog != nullptr)
+            {
+                const auto name = safe->saveDialog->getTextEditorContents ("name");
+                if (safe->processor.getPresetManager().saveUserPreset (name))
+                    safe->refreshPresetBox();
+            }
+            safe->saveDialog.reset();
+        }));
 }
 
 void PluginEditor::applyAccent (juce::Colour c)
@@ -434,11 +459,20 @@ void PluginEditor::applyAccent (juce::Colour c)
 
 void PluginEditor::showOptionsMenu()
 {
+    createOptionsMenu().showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&optionsButton),
+                                       [safe = juce::Component::SafePointer<PluginEditor> (this)] (int result) {
+                                           if (safe != nullptr)
+                                               safe->optionsMenuItemChosen (result);
+                                       });
+}
+
+juce::PopupMenu PluginEditor::createOptionsMenu()
+{
     auto& pm = processor.getPresetManager();
-    const auto current = pm.getCurrentPresetName();
+    optionsMenuPreset = pm.getCurrentPresetName();
     bool currentIsUser = false;
     for (const auto& preset : pm.getPresets())
-        currentIsUser = currentIsUser || (! preset.factory && preset.name == current);
+        currentIsUser = currentIsUser || (! preset.factory && preset.name == optionsMenuPreset);
 
     juce::PopupMenu accents;
     for (size_t i = 0; i < std::size (kAccents); ++i)
@@ -446,45 +480,61 @@ void PluginEditor::showOptionsMenu()
                          lookAndFeel.getAccent() == juce::Colour (kAccents[i].argb));
 
     juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeel); // JUCE menus don't inherit the target's look
     menu.addSubMenu (u8 ("Color de acento"), accents);
     menu.addItem (1, u8 ("Abrir carpeta de presets"));
-    menu.addItem (2, u8 ("Borrar preset de usuario «") + current + u8 ("»"), currentIsUser);
+    menu.addItem (2, u8 ("Borrar preset de usuario «") + optionsMenuPreset + u8 ("»"), currentIsUser);
     menu.addItem (4, u8 ("Abrir carpeta de capturas de audio (modo gráfico)"));
     menu.addSeparator();
     menu.addItem (5, pm.getActiveSlot() == 0 ? u8 ("Copiar el sonido A en B") : u8 ("Copiar el sonido B en A"));
     menu.addItem (3, u8 ("Quitar todas las asignaciones MIDI"));
+    return menu;
+}
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&optionsButton),
-                        [this, current] (int result) {
-                            auto& presets = processor.getPresetManager();
-                            if (result >= 100)
-                                applyAccent (juce::Colour (kAccents[static_cast<size_t> (result - 100)].argb));
-                            else if (result == 1)
-                            {
-                                presets.getUserFolder().createDirectory();
-                                presets.getUserFolder().startAsProcess();
-                            }
-                            else if (result == 2 && presets.deleteUserPreset (current))
-                                refreshPresetBox();
-                            else if (result == 3)
-                                processor.getMidiLearn().clearAll();
-                            else if (result == 5)
-                                presets.copyActiveToOther();
-                            else if (result == 4)
-                            {
-                                processor.getCaptureRoot().createDirectory();
-                                processor.getCaptureRoot().startAsProcess();
-                            }
-                        });
+void PluginEditor::optionsMenuItemChosen (int result)
+{
+    auto& presets = processor.getPresetManager();
+    if (result >= 100 && result < 100 + static_cast<int> (std::size (kAccents)))
+        applyAccent (juce::Colour (kAccents[static_cast<size_t> (result - 100)].argb));
+    else if (result == 1)
+    {
+        presets.getUserFolder().createDirectory();
+        presets.getUserFolder().startAsProcess();
+    }
+    else if (result == 2 && presets.deleteUserPreset (optionsMenuPreset))
+        refreshPresetBox();
+    else if (result == 3)
+    {
+        processor.getMidiLearn().clearAll();
+        refreshMidiLabels();
+    }
+    else if (result == 5)
+        presets.copyActiveToOther();
+    else if (result == 4)
+    {
+        processor.getCaptureRoot().createDirectory();
+        processor.getCaptureRoot().startAsProcess();
+    }
 }
 
 void PluginEditor::showKnobMenu (LabeledKnob& knob)
+{
+    createKnobMenu (knob).showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&knob.getSlider()),
+                                         [safe = juce::Component::SafePointer<PluginEditor> (this),
+                                          index = knob.getParameterIndex()] (int result) {
+                                             if (safe != nullptr)
+                                                 safe->knobMenuItemChosen (index, result);
+                                         });
+}
+
+juce::PopupMenu PluginEditor::createKnobMenu (const LabeledKnob& knob) const
 {
     auto& learn = processor.getMidiLearn();
     const int index = knob.getParameterIndex();
     const int cc = learn.getCcForParam (index);
 
     juce::PopupMenu menu;
+    menu.setLookAndFeel (&knob.getLookAndFeel());
     menu.addSectionHeader (knob.getCaption());
     if (learn.getLearningParam() == index)
         menu.addItem (2, u8 ("Cancelar aprendizaje MIDI"));
@@ -498,17 +548,19 @@ void PluginEditor::showKnobMenu (LabeledKnob& knob)
         menu.addItem (4, u8 ("En VST3, FL Studio no envía CC al efecto: usa «Link to controller» de FL "
                              "o la versión CLAP"), false);
     }
+    return menu;
+}
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&knob.getSlider()), [this, index] (int result) {
-        auto& l = processor.getMidiLearn();
-        if (result == 1)
-            l.startLearning (index);
-        else if (result == 2)
-            l.cancelLearning();
-        else if (result == 3)
-            l.clearMapping (index);
-        refreshMidiLabels();
-    });
+void PluginEditor::knobMenuItemChosen (int index, int result)
+{
+    auto& l = processor.getMidiLearn();
+    if (result == 1)
+        l.startLearning (index);
+    else if (result == 2)
+        l.cancelLearning();
+    else if (result == 3)
+        l.clearMapping (index);
+    refreshMidiLabels();
 }
 
 void PluginEditor::refreshMidiLabels()
@@ -563,7 +615,17 @@ void PluginEditor::showStatus (const juce::String& text)
 
 void PluginEditor::showListenMenu()
 {
+    createListenMenu().showMenuAsync (juce::PopupMenu::Options().withTargetComponent (listenButton),
+                                      [safe = juce::Component::SafePointer<PluginEditor> (this)] (int result) {
+                                          if (safe != nullptr)
+                                              safe->listenMenuItemChosen (result);
+                                      });
+}
+
+juce::PopupMenu PluginEditor::createListenMenu() const
+{
     juce::PopupMenu menu;
+    menu.setLookAndFeel (&getLookAndFeel());
     if (processor.isKeyListening())
     {
         menu.addItem (1, u8 ("Detener y aplicar"));
@@ -578,20 +640,23 @@ void PluginEditor::showListenMenu()
         menu.addSeparator();
         menu.addItem (100, u8 ("Desde la captura del modo gráfico"), ! processor.getGraphModel().getCaptured().empty());
     }
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (listenButton), [this] (int result) {
-        if (result == 1)
-            processor.finishKeyListening (true);
-        else if (result == 2)
-            processor.finishKeyListening (false);
-        else if (result == 10 || result == 20 || result == 30)
-        {
-            processor.startKeyListening (static_cast<double> (result));
-            showStatus (u8 ("Escuchando: canta o reproduce la voz (cuentan solo los tramos con voz)…"));
-        }
-        else if (result == 100)
-            processor.detectKeyFromCapture (true);
-        updateKeyControls();
-    });
+    return menu;
+}
+
+void PluginEditor::listenMenuItemChosen (int result)
+{
+    if (result == 1)
+        processor.finishKeyListening (true);
+    else if (result == 2)
+        processor.finishKeyListening (false);
+    else if (result == 10 || result == 20 || result == 30)
+    {
+        processor.startKeyListening (static_cast<double> (result));
+        showStatus (u8 ("Escuchando: canta o reproduce la voz (cuentan solo los tramos con voz)…"));
+    }
+    else if (result == 100)
+        processor.detectKeyFromCapture (true);
+    updateKeyControls();
 }
 
 void PluginEditor::updateKeyControls()
@@ -750,14 +815,12 @@ void PluginEditor::timerCallback()
         refreshPresetBox();
     if (const int slot = pm.getActiveSlot(); ! abButtons[static_cast<size_t> (slot)].getToggleState())
         abButtons[static_cast<size_t> (slot)].setToggleState (true, juce::dontSendNotification);
-    if (++modifiedCheckCounter >= 6) // 5 Hz is plenty for the "*"
+    // Every tick: picking the current preset again must find the "*" already
+    // shown, otherwise the list sees no change and nothing is reverted.
+    if (const bool modified = pm.isModified(); modified != shownModified)
     {
-        modifiedCheckCounter = 0;
-        if (const bool modified = pm.isModified(); modified != shownModified)
-        {
-            shownModified = modified;
-            refreshPresetBox();
-        }
+        shownModified = modified;
+        refreshPresetBox();
     }
     if (processor.getMidiMappingGeneration() != shownMidiGeneration
         || processor.getMidiLearn().getLearningParam() != shownLearning)
@@ -807,10 +870,10 @@ void PluginEditor::Content::resized()
     presets.removeFromLeft (4);
     owner.optionsButton.setBounds (presets.removeFromRight (34));
     presets.removeFromRight (4);
-    owner.savePreset.setBounds (presets.removeFromRight (70));
+    owner.savePreset.setBounds (presets.removeFromRight (widthToFitText (owner.savePreset, kPresetBar.getHeight(), 0, 64)));
     presets.removeFromRight (4);
-    owner.abButtons[1].setBounds (presets.removeFromRight (24));
-    owner.abButtons[0].setBounds (presets.removeFromRight (24));
+    owner.abButtons[1].setBounds (presets.removeFromRight (28));
+    owner.abButtons[0].setBounds (presets.removeFromRight (28));
     presets.removeFromRight (4);
     owner.nextPreset.setBounds (presets.removeFromRight (26));
     presets.removeFromRight (4);
@@ -903,7 +966,7 @@ void PluginEditor::Content::resized()
     // Page 3: [display][keep] | [synth knobs x6]
     {
         auto row = local.reduced (10, 10);
-        owner.vibratoDisplay.setBounds (row.removeFromLeft (190));
+        owner.vibratoDisplay.setBounds (row.removeFromLeft (160));
         row.removeFromLeft (8);
         owner.vibratoKnobs[0]->setBounds (row.removeFromLeft (84));
         row.removeFromLeft (14); // divider

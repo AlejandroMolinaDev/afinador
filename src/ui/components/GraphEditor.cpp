@@ -853,6 +853,11 @@ private:
         }
         if (fixedLeft >= start - dsp::TimeMap::kMinSpacing)
             fixedLeft = std::max (0.0, start - 0.25);
+        // A note at the very start of the timeline has no room before it: its
+        // start stays put (identity anchor) and the drag moves its end.
+        const bool startCanMove = start - fixedLeft >= dsp::TimeMap::kMinSpacing - 1.0e-9;
+        if (! startCanMove)
+            fixedLeft = start;
         if (fixedRight <= end + dsp::TimeMap::kMinSpacing)
             fixedRight = end + 0.25;
 
@@ -871,7 +876,7 @@ private:
         ensureAnchor (map, fixedLeft);
         ensureAnchor (map, fixedRight);
         movingSources.clear();
-        if (mode != Drag::ResizeRight)
+        if (mode != Drag::ResizeRight && startCanMove)
             movingSources.push_back (start);
         if (mode != Drag::ResizeLeft)
             movingSources.push_back (end);
@@ -1013,6 +1018,7 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
 {
     setWantsKeyboardFocus (true);
     roll = std::make_unique<Roll> (*this);
+    roll->setComponentID ("roll");
     addAndMakeVisible (*roll);
 
     const char* toolNames[] = { "Seleccionar", "Nota", "Línea", "Curva", "Borrar", "Dividir", "Tiempo" };
@@ -1032,6 +1038,8 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
         b.setButtonText (u8 (toolNames[i]));
         b.setTooltip (u8 (toolTips[i]));
         b.setRadioGroupId (3001);
+        b.setComponentID ("tool" + juce::String (i));
+        setCompact (b);
         b.setClickingTogglesState (true);
         styleButton (b);
         b.onClick = [this, i] {
@@ -1068,23 +1076,11 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
             repaint();
             return;
         }
-        juce::PopupMenu menu;
-        menu.addSectionHeader (u8 ("Crear objetos desde la captura (se puede deshacer)"));
-        menu.addItem (2, u8 ("Notas — detalle normal"));
-        menu.addItem (3, u8 ("Notas — más detalle (pasajes rápidos, adornos)"));
-        menu.addItem (1, u8 ("Notas — menos detalle (notas largas)"));
-        menu.addSeparator();
-        menu.addItem (4, u8 ("Curvas — siguen la afinación capturada (para editar la forma)"));
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (importButton), [this] (int result) {
-            if (result >= 1 && result <= 3)
-                processor.importGraphFromAuto (result - 1);
-            else if (result == 4)
-                processor.importGraphAsCurves();
-            else
-                return;
-            roll->selection.clear();
-            roll->fitAll();
-        });
+        createImportMenu().showMenuAsync (juce::PopupMenu::Options().withTargetComponent (importButton),
+                                          [safe = juce::Component::SafePointer<GraphEditor> (this)] (int result) {
+                                              if (safe != nullptr)
+                                                  safe->importMenuItemChosen (result);
+                                          });
     };
     clearButton.setButtonText (u8 ("Limpiar…"));
     clearButton.setTooltip (u8 ("Borrar objetos y/o la curva capturada."));
@@ -1104,9 +1100,19 @@ GraphEditor::GraphEditor (NovaPitchProcessor& p)
     fitButton.setTooltip (u8 ("Muestra toda la captura y los objetos. Rueda: tono · Mayús+rueda: tiempo · Alt+rueda: zoom de tono."));
     fitButton.onClick = [this] { roll->fitAll(); };
 
+    const std::pair<juce::Button*, const char*> ids[] = { { &mergeButton, "merge" }, { &undoButton, "undo" }, { &redoButton, "redo" },
+                                                          { &captureButton, "capture" }, { &importButton, "import" },
+                                                          { &clearButton, "clear" }, { &followButton, "follow" },
+                                                          { &zoomOut, "zoomOut" }, { &zoomIn, "zoomIn" }, { &fitButton, "fit" } };
+    for (const auto& [button, id] : ids)
+        button->setComponentID (id);
+    retuneSlider.setComponentID ("inspRetune");
+    vibratoSlider.setComponentID ("inspVibrato");
+    formantSlider.setComponentID ("inspFormant");
     for (auto* b : { &mergeButton, &undoButton, &redoButton, &captureButton, &importButton, &clearButton, &followButton,
                      &zoomOut, &zoomIn, &fitButton })
     {
+        setCompact (*b);
         styleButton (*b);
         addAndMakeVisible (*b);
     }
@@ -1233,27 +1239,99 @@ void GraphEditor::deleteSelection()
 
 void GraphEditor::showClearMenu()
 {
+    createClearMenu().showMenuAsync (juce::PopupMenu::Options().withTargetComponent (clearButton),
+                                     [safe = juce::Component::SafePointer<GraphEditor> (this)] (int result) {
+                                         if (safe != nullptr)
+                                             safe->clearMenuItemChosen (result);
+                                     });
+}
+
+juce::PopupMenu GraphEditor::createClearMenu() const
+{
     juce::PopupMenu menu;
+    menu.setLookAndFeel (&getLookAndFeel()); // JUCE menus don't inherit the target's look
     menu.addItem (1, u8 ("Borrar todos los objetos"), model.getObjects().getNumChildren() > 0);
     menu.addItem (2, u8 ("Borrar la curva capturada"), ! model.getCaptured().empty());
     menu.addItem (3, u8 ("Borrar todo"));
     menu.addSeparator();
     menu.addItem (4, u8 ("Quitar ediciones de tiempo"), ! model.getTimeMap().isIdentity());
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (clearButton), [this] (int result) {
-        if (result == 1 || result == 3)
-        {
-            model.beginEdit (u8 ("Borrar objetos"));
-            model.clearObjects();
-            roll->selection.clear();
-        }
-        if (result == 2 || result == 3)
-            processor.clearGraphCapture(); // pitch curve + captured audio files
-        if (result == 3 || result == 4)
-        {
-            model.beginEdit (u8 ("Quitar ediciones de tiempo"));
-            model.clearTimeEdits();
-        }
-    });
+    return menu;
+}
+
+void GraphEditor::clearMenuItemChosen (int result)
+{
+    if (result == 1 || result == 3)
+    {
+        model.beginEdit (u8 ("Borrar objetos"));
+        model.clearObjects();
+        roll->selection.clear();
+    }
+    if (result == 2 || result == 3)
+        processor.clearGraphCapture(); // pitch curve + captured audio files
+    if (result == 3 || result == 4)
+    {
+        model.beginEdit (u8 ("Quitar ediciones de tiempo"));
+        model.clearTimeEdits();
+    }
+    if (result >= 1 && result <= 4)
+    {
+        updateInspector();
+        roll->repaint();
+    }
+}
+
+juce::PopupMenu GraphEditor::createImportMenu() const
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&getLookAndFeel());
+    menu.addSectionHeader (u8 ("Crear objetos desde la captura (se puede deshacer)"));
+    menu.addItem (2, u8 ("Notas — detalle normal"));
+    menu.addItem (3, u8 ("Notas — más detalle (pasajes rápidos, adornos)"));
+    menu.addItem (1, u8 ("Notas — menos detalle (notas largas)"));
+    menu.addSeparator();
+    menu.addItem (4, u8 ("Curvas — siguen la afinación capturada (para editar la forma)"));
+    return menu;
+}
+
+void GraphEditor::importMenuItemChosen (int result)
+{
+    if (result >= 1 && result <= 3)
+        processor.importGraphFromAuto (result - 1);
+    else if (result == 4)
+        processor.importGraphAsCurves();
+    else
+        return;
+    roll->selection.clear();
+    roll->fitAll();
+    updateInspector();
+}
+
+juce::Component& GraphEditor::getRollComponent() noexcept { return *roll; }
+
+juce::Point<float> GraphEditor::rollPoint (double sourceTime, float pitch) const
+{
+    return { roll->xs (sourceTime), roll->yOf (pitch) };
+}
+
+void GraphEditor::setRollView (double start, double length, float top, float range)
+{
+    roll->viewStart = start;
+    roll->viewLength = length;
+    roll->pitchTop = top;
+    roll->pitchRange = range;
+    roll->userMovedPitch = true;
+    roll->follow = false;
+    updateButtons();
+    roll->repaint();
+}
+
+double GraphEditor::getRollViewStart() const { return roll->viewStart; }
+double GraphEditor::getRollViewLength() const { return roll->viewLength; }
+bool GraphEditor::isFollowing() const { return roll->follow; }
+
+std::vector<juce::int64> GraphEditor::getSelectedIds() const
+{
+    return { roll->selection.begin(), roll->selection.end() };
 }
 
 juce::String GraphEditor::buildInfoText() const
@@ -1385,23 +1463,26 @@ void GraphEditor::refresh()
 
 void GraphEditor::resized()
 {
+    // Toolbar widths come from each button's text with the platform's font, so
+    // nothing is squashed on Windows, macOS or Linux.
+    auto fit = [] (juce::TextButton& b, int minWidth = 28) { return widthToFitText (b, 28, 4, minWidth); };
     auto row1 = juce::Rectangle<int> (0, 0, getWidth(), 28);
-    for (size_t i = 0; i < toolButtons.size(); ++i)
-        toolButtons[i].setBounds (row1.removeFromLeft (i == 0 ? 86 : 70).reduced (2, 0));
+    for (auto& b : toolButtons)
+        b.setBounds (row1.removeFromLeft (fit (b, 54)).reduced (2, 0));
     row1.removeFromLeft (8);
-    mergeButton.setBounds (row1.removeFromLeft (58).reduced (2, 0));
-    redoButton.setBounds (row1.removeFromRight (66).reduced (2, 0));
-    undoButton.setBounds (row1.removeFromRight (70).reduced (2, 0));
+    mergeButton.setBounds (row1.removeFromLeft (fit (mergeButton, 54)).reduced (2, 0));
+    redoButton.setBounds (row1.removeFromRight (fit (redoButton)).reduced (2, 0));
+    undoButton.setBounds (row1.removeFromRight (fit (undoButton)).reduced (2, 0));
 
     auto row2 = juce::Rectangle<int> (0, 32, getWidth(), 28);
-    captureButton.setBounds (row2.removeFromLeft (96).reduced (2, 0));
-    importButton.setBounds (row2.removeFromLeft (176).reduced (2, 0));
-    clearButton.setBounds (row2.removeFromLeft (76).reduced (2, 0));
+    captureButton.setBounds (row2.removeFromLeft (fit (captureButton)).reduced (2, 0));
+    importButton.setBounds (row2.removeFromLeft (fit (importButton)).reduced (2, 0));
+    clearButton.setBounds (row2.removeFromLeft (fit (clearButton)).reduced (2, 0));
     row2.removeFromLeft (10);
-    followButton.setBounds (row2.removeFromLeft (64).reduced (2, 0));
+    followButton.setBounds (row2.removeFromLeft (fit (followButton)).reduced (2, 0));
     zoomOut.setBounds (row2.removeFromLeft (30).reduced (2, 0));
     zoomIn.setBounds (row2.removeFromLeft (30).reduced (2, 0));
-    fitButton.setBounds (row2.removeFromLeft (64).reduced (2, 0));
+    fitButton.setBounds (row2.removeFromLeft (fit (fitButton)).reduced (2, 0));
 
     roll->setBounds (0, 66, getWidth(), getHeight() - 66 - 50);
 

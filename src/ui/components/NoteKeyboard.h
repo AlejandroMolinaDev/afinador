@@ -9,6 +9,8 @@
 namespace novapitch
 {
 
+struct UiTestAccess;
+
 /** One-octave keyboard to set the state of each of the 12 notes (parameters
     noteState0..11): Escala (follows key + scale), Activa, Ignorar (the original
     pitch passes) or Eliminar (redirected to the nearest valid note).
@@ -48,6 +50,9 @@ public:
 private:
     juce::AudioProcessorValueTreeState& state;
     void askExactDetune (int pitchClass);
+    /** Right-click menu of a key and its handler (the UI tests run the same code). */
+    juce::PopupMenu createKeyMenu (int pitchClass) const;
+    void keyMenuItemChosen (int pitchClass, int result);
 
     std::array<std::unique_ptr<juce::ParameterAttachment>, 12> noteAttachments, detuneAttachments;
     std::array<float, 12> detunes {};
@@ -60,6 +65,7 @@ private:
     juce::Rectangle<float> keysArea;
     juce::TextButton resetButton, allActiveButton;
 
+    friend struct UiTestAccess;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NoteKeyboard)
 };
 

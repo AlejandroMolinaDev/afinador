@@ -45,12 +45,22 @@ public:
                  const juce::String& captionText, const juce::String& tooltip)
         : caption (captionText)
     {
+        setComponentID (paramId); // lets tests find the control of each parameter
         label.setText (caption, juce::dontSendNotification);
         label.setJustificationType (juce::Justification::centred);
         label.setFont (juce::FontOptions (12.0f, juce::Font::bold));
         label.setColour (juce::Label::textColourId, Palette::textMuted);
         label.setMinimumHorizontalScale (0.7f);
+        label.setBorderSize ({ 1, 1, 1, 1 }); // captions use the knob's full width
         addAndMakeVisible (label);
+
+        // Mapped MIDI CC, shown in the knob's top-right corner (captions stay readable).
+        ccBadge.setComponentID ("ccBadge");
+        ccBadge.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+        ccBadge.setJustificationType (juce::Justification::centredRight);
+        ccBadge.setBorderSize ({ 0, 0, 0, 1 });
+        ccBadge.setInterceptsMouseClicks (false, false);
+        addChildComponent (ccBadge);
 
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 18);
@@ -81,21 +91,18 @@ public:
         auto r = getLocalBounds();
         label.setBounds (r.removeFromTop (18));
         slider.setBounds (r);
+        ccBadge.setBounds (r.getRight() - 34, r.getY(), 34, 12);
+        ccBadge.toFront (false);
     }
 
-    /** Caption suffix for MIDI Learn: mapped CC number (-1 = none), learning state. */
+    /** MIDI Learn state: mapped CC number (-1 = none), learning. */
     void setMidiState (int cc, bool learning, juce::Colour accent)
     {
-        if (learning)
-        {
-            label.setText (juce::String::fromUTF8 ("Mueve un control MIDI…"), juce::dontSendNotification);
-            label.setColour (juce::Label::textColourId, accent);
-        }
-        else
-        {
-            label.setText (cc >= 0 ? caption + juce::String::fromUTF8 (" \xc2\xb7 CC") + juce::String (cc) : caption, juce::dontSendNotification);
-            label.setColour (juce::Label::textColourId, cc >= 0 ? Palette::textPrimary : Palette::textMuted);
-        }
+        label.setText (learning ? juce::String::fromUTF8 ("Mueve un CC…") : caption, juce::dontSendNotification);
+        label.setColour (juce::Label::textColourId, learning ? accent : (cc >= 0 ? Palette::textPrimary : Palette::textMuted));
+        ccBadge.setText (cc >= 0 ? "CC" + juce::String (cc) : juce::String(), juce::dontSendNotification);
+        ccBadge.setColour (juce::Label::textColourId, accent);
+        ccBadge.setVisible (cc >= 0 && ! learning);
     }
 
     int getParameterIndex() const noexcept { return parameterIndex; }
@@ -106,7 +113,7 @@ public:
 
 private:
     juce::String caption;
-    juce::Label label;
+    juce::Label label, ccBadge;
     KnobSlider slider;
     int parameterIndex = -1;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
@@ -119,6 +126,7 @@ public:
     LabeledCombo (juce::AudioProcessorValueTreeState& state, const juce::String& paramId,
                   const juce::String& caption, const juce::String& tooltip)
     {
+        setComponentID (paramId);
         label.setText (caption, juce::dontSendNotification);
         label.setFont (juce::FontOptions (12.0f, juce::Font::bold));
         label.setColour (juce::Label::textColourId, Palette::textMuted);
@@ -154,6 +162,7 @@ public:
     LabeledToggle (juce::AudioProcessorValueTreeState& state, const juce::String& paramId,
                    const juce::String& caption, const juce::String& tooltip)
     {
+        setComponentID (paramId);
         button.setButtonText (caption);
         button.setTooltip (tooltip);
         addAndMakeVisible (button);

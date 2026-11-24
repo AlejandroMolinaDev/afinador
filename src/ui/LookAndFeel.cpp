@@ -92,6 +92,12 @@ juce::Font NovaLookAndFeel::getComboBoxFont (juce::ComboBox&)
     return juce::Font (juce::FontOptions (14.0f));
 }
 
+juce::Font NovaLookAndFeel::getTextButtonFont (juce::TextButton& button, int buttonHeight)
+{
+    const float size = button.getProperties().contains ("compactFont") ? 14.0f : 15.0f;
+    return withDefaultMetrics (juce::FontOptions (juce::jmin (size, static_cast<float> (buttonHeight) * 0.6f)));
+}
+
 juce::Font NovaLookAndFeel::getPopupMenuFont()
 {
     return juce::Font (juce::FontOptions (14.0f));

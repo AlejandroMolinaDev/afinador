@@ -691,7 +691,8 @@ void NovaPitchProcessor::pitchFrameReady (const dsp::PitchEstimate& e) noexcept
     const double frameTime = chunkHostTime
                              + static_cast<double> (e.sampleIndex - chunkStartIndex - pitchDetector.getDetectionLagSamples())
                                    / inputSampleRate;
-    if (blockPlaying && captureRequested.load (std::memory_order_relaxed)
+    // frameTime < 0: the detector's look-back before the timeline start (no song audio there).
+    if (blockPlaying && frameTime >= 0.0 && captureRequested.load (std::memory_order_relaxed)
         && (frameTime - lastCaptureTime >= GraphModel::kFrameSeconds - 1.0e-4 || frameTime < lastCaptureTime
             || voiced != lastCaptureVoiced))
     {

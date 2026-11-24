@@ -20,6 +20,7 @@ namespace novapitch
 {
 
 class NovaPitchProcessor;
+struct UiTestAccess; // tests/ui: reaches the editor's controls and menus
 
 /** Main editor. All content lives in a fixed-size (kBaseWidth x kBaseHeight)
     component that is scaled with an AffineTransform, so the UI stays crisp on
@@ -59,8 +60,13 @@ private:
     void updateView();
     void setGraphMode (bool);
 
+    // Pop-up menus: each one is built by create*Menu() and its result handled by
+    // *MenuItemChosen(), so the UI tests run exactly what a menu click runs.
+
     // Key detection / instance sync (phase 9)
     void showListenMenu();
+    juce::PopupMenu createListenMenu() const;
+    void listenMenuItemChosen (int result);
     void showStatus (const juce::String&);
     void updateKeyControls();
     void paintFooter (juce::Graphics&) const;
@@ -69,10 +75,14 @@ private:
     void refreshPresetBox();
     void showSaveDialog();
     void showOptionsMenu();
+    juce::PopupMenu createOptionsMenu();
+    void optionsMenuItemChosen (int result);
     void applyAccent (juce::Colour);
 
     // MIDI Learn
     void showKnobMenu (LabeledKnob&);
+    juce::PopupMenu createKnobMenu (const LabeledKnob&) const;
+    void knobMenuItemChosen (int parameterIndex, int result);
     void refreshMidiLabels();
     std::vector<LabeledKnob*> allKnobs() const;
 
@@ -121,8 +131,8 @@ private:
     juce::TextButton prevPreset { "<" }, nextPreset { ">" }, savePreset, optionsButton;
     std::array<juce::TextButton, 2> abButtons; // A/B comparison
     bool shownModified = false;
-    int modifiedCheckCounter = 0;
     std::unique_ptr<juce::AlertWindow> saveDialog;
+    juce::String optionsMenuPreset; // preset the options menu was opened for
     juce::String shownPresetName;
     int shownMidiGeneration = -1;
     int shownLearning = -2;
@@ -144,6 +154,7 @@ private:
     std::array<PitchFrame, 512> frameScratch {};
     PitchFrame lastFrame;
 
+    friend struct UiTestAccess;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginEditor)
 };
 

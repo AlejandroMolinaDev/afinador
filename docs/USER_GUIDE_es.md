@@ -177,7 +177,7 @@ Con eso funcionan: armonías en modo MIDI (acordes), **MIDI: nota objetivo** y *
 - **Aprender escala por MIDI**: mientras está activo, las notas que toques definen una escala personalizada (Escala = Personalizada). Desactívalo para conservarla.
 - **Comparación A/B**: los botones **A** y **B** de la cabecera guardan dos versiones del sonido; pulsa el otro para compararlas mientras suena la canción (la primera vez, B empieza como copia de A). `···` → *Copiar el sonido A en B* iguala ambas. Las dos se guardan con el proyecto y nunca cambian la tonalidad, la escala ni las notas.
 - **Presets**: los de fábrica (*Corrección natural, Pop moderno, Hard tune, Trap / urbano latino, Directo, Voz grave, Armonías 3as*) y los tuyos (**Guardar**, en `Documentos/NovaPitch/Presets`). Un preset cambia el sonido **pero nunca** la tonalidad, la escala, las notas (ni su desafinación), la referencia A4 ni el modo gráfico: puedes probar presets a mitad de canción sin perder la tonalidad. Si tocas un ajuste, el nombre muestra «*»; elegir el mismo preset otra vez descarta los cambios.
-- **MIDI Learn** (CLAP, AU y aplicación independiente): clic derecho en cualquier knob → *Asignar a controlador MIDI* y mueve un control de tu teclado. Las asignaciones se guardan en el proyecto.
+- **MIDI Learn** (CLAP, AU y aplicación independiente): clic derecho en cualquier knob → *Asignar a controlador MIDI* (el rótulo muestra «Mueve un CC…») y mueve un control de tu teclado. El número del controlador aparece en la esquina del knob («CC21»). Las asignaciones se guardan en el proyecto.
 - **En VST3 dentro de FL Studio** usa *Link to controller* de FL (clic derecho en el knob dentro de FL o *Tools → Last tweaked → Link to controller*): FL no envía CC a los efectos VST3.
 
 ---

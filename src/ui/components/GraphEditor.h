@@ -12,6 +12,7 @@ namespace novapitch
 
 class NovaPitchProcessor;
 class GraphModel;
+struct UiTestAccess;
 
 /** Graphical mode editor (phase 8, no ARA): piano roll with the captured pitch
     curve and the correction objects (notes, lines, freehand curves), a toolbar
@@ -50,7 +51,22 @@ private:
     void applyInspector (const juce::Identifier& property, double value);
     void mergeSelection();
     void showClearMenu();
+    // Menus built and handled separately, so the UI tests run the code a click runs.
+    juce::PopupMenu createImportMenu() const;
+    void importMenuItemChosen (int result);
+    juce::PopupMenu createClearMenu() const;
+    void clearMenuItemChosen (int result);
     void deleteSelection();
+
+    // Piano-roll introspection for the UI tests (Roll is private to the .cpp).
+    juce::Component& getRollComponent() noexcept;
+    /** Point in roll coordinates of a source time and pitch (MIDI). */
+    juce::Point<float> rollPoint (double sourceTime, float pitch) const;
+    void setRollView (double start, double length, float top, float range);
+    double getRollViewStart() const;
+    double getRollViewLength() const;
+    std::vector<juce::int64> getSelectedIds() const;
+    bool isFollowing() const;
     juce::String buildInfoText() const;
 
     NovaPitchProcessor& processor;
@@ -71,6 +87,7 @@ private:
     juce::String infoText;
 
     friend class Roll;
+    friend struct UiTestAccess;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GraphEditor)
 };
 

@@ -195,6 +195,18 @@ int main (int argc, char* argv[])
         model.addCurve ({ { 3.70, 62.0f }, { 3.74, 62.6f }, { 3.78, 63.1f } });
         if (auto* graphMode = state.getParameter ("graphMode"))
             graphMode->setValueNotifyingHost (1.0f);
+
+        // Objects only (user guide, graphical mode): play up to 2.2 s.
+        playFrom (0, static_cast<size_t> (sr * 2.2));
+        head.samples = static_cast<int64_t> (sr * 2.2);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+        {
+            const auto file = outDir.getChildFile ("editor-graph-objects-100.png");
+            const bool written = writePng (editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f), file);
+            std::cout << (written ? "wrote " : "FAILED ") << file.getFullPathName() << std::endl;
+            ok = ok && written;
+        }
+
         // Time edit: the E4 syllable (1.6 s) starts 100 ms later; neighbours absorb it.
         novapitch::dsp::TimeMap map;
         map.anchors = { { 0.9, 0.9 }, { 1.7, 1.6 }, { 2.4, 2.4 } };

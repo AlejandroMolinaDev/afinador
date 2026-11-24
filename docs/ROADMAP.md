@@ -105,6 +105,14 @@ Estado por fases (ver especificación original, sección 11).
 - [x] Desafinación por nota (±50 ¢, escalas microtonales) en la pestaña Notas.
 - [ ] Saltos de más de ~4 semitonos: la salida sigue el cambio cuando el detector lo confirma (~20 ms); ampliar la búsqueda de épocas sin crear errores de octava.
 
+### Pruebas automáticas de la interfaz (0.9.x) — `docs/TESTING_AUTOMATICO.md`
+- [x] `NovaPitchUiTests`: el editor real en una ventana, manejado con ratón y teclado por el *peer* (cada control, menús, diálogos, modo gráfico completo); maquetación automática en 75–200 %; capturas por escenario en la CI.
+- [x] Ventana real de host (`NovaPitchHostTest --show-editor`): el VST3/AU dibuja su editor en una ventana de host al 100 % y 200 %; captura de pantalla verificada en Linux.
+- [x] Corregido: cierre con menú o diálogo abierto (memoria liberada), textos comprimidos, menús sin el aspecto de NovaPitch, «*» con retraso, captura antes del 0:00 y herramienta Tiempo en la primera nota.
+- [ ] Capturas de pantalla reales también en Windows y macOS (hoy la ventana real se verifica ahí sin captura; la captura de pantalla automática es solo de Linux).
+- [ ] Pruebas con AddressSanitizer en la CI (hoy se ejecutan en local antes de cada entrega).
+- [ ] Probar los menús emergentes haciendo clic en sus elementos dentro de la ventana del menú (hoy se comprueba que el clic abre el menú y se ejecuta el mismo manejador que el elemento).
+
 ### Fase 10
 - [x] `docs/USER_GUIDE_es.md` completa (+ HTML autónomo con imágenes, `tools/docs/build_guide.py`, incluido en los instaladores).
 - [x] Instalador de Windows (Inno Setup 6): VST3/CLAP en `Common Files`, aplicación + guía en `Program Files\NovaPitch`, componentes, desinstalador, cierre de FL si tiene el plugin cargado. En CI: se instala en silencio, se pasa el host test al VST3 instalado y se desinstala.

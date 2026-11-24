@@ -3,6 +3,8 @@
 Marca cada punto en **Windows** y en **macOS** (en Mac, idealmente en Apple Silicon nativo **y** con FL bajo Rosetta / en un Intel).
 La ventana de NovaPitch muestra los datos de diagnóstico necesarios (formato, host, sample rate, bloques, canales, latencia, MIDI).
 
+**Antes de empezar:** [`TESTING_AUTOMATICO.md`](TESTING_AUTOMATICO.md) indica qué puntos ya cubren las pruebas automáticas (interfaz manejada con ratón y teclado, host test sobre el binario, ventana real de host, validadores). La sección «Lo que queda para la prueba en FL» de ese documento resume lo que depende de verdad de FL Studio: empieza por ahí si hay poco tiempo.
+
 Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: ________
 
 ## Fase 1 — Esqueleto (passthrough)
@@ -124,7 +126,7 @@ Versión de FL Studio probada: ________  ·  Sistema: ________  ·  Fecha: _____
 | 58 | Recorrer los presets de fábrica con `<` `>`: el sonido cambia, la tonalidad/escala no | | |
 | 59 | **Guardar** un preset de usuario, cerrar FL, reabrir: aparece en la lista y carga igual | | |
 | 60 | `···` → *Abrir carpeta de presets* abre `Documentos/NovaPitch/Presets` | | |
-| 61 | **CLAP**: clic derecho en un knob → *Asignar a controlador MIDI* → mover un knob del controlador: queda "· CC n" y lo controla | | |
+| 61 | **CLAP**: clic derecho en un knob → *Asignar a controlador MIDI* → mover un knob del controlador: aparece «CCn» en la esquina del knob y lo controla | | |
 | 62 | **VST3**: el menú indica usar *Link to controller* de FL; verificar que *Link to controller* funciona con los parámetros de NovaPitch | | |
 | 63 | Guardar el proyecto con mapeos MIDI y reabrir: mapeos intactos | | |
 | 64 | `···` → *Color de acento*: cambia el color y se mantiene al reabrir el proyecto | | |

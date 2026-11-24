@@ -429,6 +429,7 @@ int GraphModel::importFromAuto (dsp::NoteMapper mapper, double minNoteSeconds, d
     double runStart = 0.0, runEnd = 0.0, lastTime = -1.0e9;
 
     auto flush = [&] {
+        runStart = std::max (0.0, runStart); // the timeline starts at 0 (older captures had frames before it)
         if (runNote >= 0 && runEnd - runStart >= minNoteSeconds)
         {
             addNote (runStart, runEnd, runPitch);
@@ -473,6 +474,7 @@ int GraphModel::importAsCurves()
     int created = 0;
     std::vector<std::pair<double, float>> run;
     auto flush = [&] {
+        run.erase (std::remove_if (run.begin(), run.end(), [] (const auto& pt) { return pt.first < 0.0; }), run.end());
         if (run.size() >= 2 && run.back().first - run.front().first >= kMinLength)
         {
             addCurve (run);

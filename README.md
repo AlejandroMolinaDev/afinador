@@ -141,11 +141,13 @@ Sin argumentos lista todos los parámetros (IDs y valores por defecto). `tools/d
 ## Integración continua y pruebas automáticas
 GitHub Actions compila en Windows x64, macOS Universal y Linux y ejecuta:
 - tests unitarios (Catch2) con señales sintéticas (precisión de detección < 5 cents);
+- **tests de interfaz** (`tests/ui`): el editor real en una ventana, manejado con ratón y teclado como un usuario (cada control, menús, diálogos, modo gráfico completo), con comprobación automática de la maquetación en 75–200 % (nada solapado, tapado ni con texto cortado) y capturas de cada escenario (`UI-test-shots-*`). En Linux: `xvfb-run -a ctest --test-dir build`;
+- **ventana real de host** (`NovaPitchHostTest --show-editor`): el binario dibuja su editor dentro de una ventana de host al 100 % y al 200 % con audio sonando (en Linux se captura la pantalla y se verifica);
 - **host test** (`tools/hosttest`): carga el binario VST3 (y AU en Mac) como lo haría un DAW y simula el comportamiento de FL Studio (bloques irregulares y vacíos, cambios de sample rate, automatización, MIDI, bypass, guardar/reabrir, varias instancias, latencia, abrir/cerrar editor mientras suena);
 - **pluginval (strictness 10)**, `auval` (Mac) y **clap-validator**;
 - benchmark de CPU (aparece en el resumen de la ejecución) y capturas de la interfaz (`UI-snapshots-*`).
 
-Los binarios quedan como artefactos descargables de cada ejecución (pestaña *Actions*). FL Studio no puede ejecutarse en CI, por eso la prueba final con voz real sigue en `docs/TESTING_FL.md`.
+Los binarios quedan como artefactos descargables de cada ejecución (pestaña *Actions*). FL Studio no puede ejecutarse en CI: [`docs/TESTING_AUTOMATICO.md`](docs/TESTING_AUTOMATICO.md) indica qué puntos de la lista manual ya cubren las pruebas automáticas y cuáles quedan para la prueba en FL ([`docs/TESTING_FL.md`](docs/TESTING_FL.md)).
 
 ## Licencias
 - **JUCE 8**: licencia comercial (plan *Starter* gratuito hasta el límite de ingresos de JUCE) **o** AGPLv3. Para distribuir NovaPitch como software cerrado necesitas una licencia JUCE adecuada a tus ingresos.
