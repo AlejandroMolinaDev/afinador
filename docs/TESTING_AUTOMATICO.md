@@ -6,7 +6,7 @@ Mientras no se pueda probar en FL Studio, NovaPitch se verifica con varias capas
 
 | Capa | Qué hace | Cómo se ejecuta |
 |---|---|---|
-| **Unitarias y DSP** (`NovaPitchTests`, 103 casos) | Detección, corrección, formantes, vibrato, armonías, MIDI, presets, A/B, estado, modo gráfico, tiempo real sin reservas de memoria | `ctest --test-dir build` |
+| **Unitarias y DSP** (`NovaPitchTests`, 106 casos) | Detección, corrección, formantes, vibrato, armonías, MIDI, presets, A/B, estado, modo gráfico, tiempo real sin reservas de memoria, y compatibilidad con proyectos guardados (códigos del plugin, lista de parámetros y estado de 0.9.0 congelados) | `ctest --test-dir build` |
 | **Interfaz** (`NovaPitchUiTests`, 23 casos, ~5000 comprobaciones) | El editor real en una ventana del escritorio, manejado con ratón y teclado: cada control, cada pestaña, menús, diálogos, el modo gráfico completo; maquetación en 75/100/150/200 %; capturas de cada escenario | igual (en Linux bajo `xvfb-run -a`) |
 | **Host test** (`NovaPitchHostTest`) | Carga el **binario** VST3 / AU como un DAW: 6 frecuencias × 4 tamaños de bloque con bloques irregulares y vacíos, automatización, MIDI, bypass, latencia medida = informada, guardar/reabrir, 8 instancias, mono/estéreo, editor abierto/cerrado con audio, modo gráfico con transporte | `NovaPitchHostTest <plugin> --editor` |
 | **Ventana real de host** | El editor que dibuja el propio binario VST3/AU, incrustado en una ventana de host al 100 % y al 200 % (redimensionado por `checkSizeConstraint`/`onSize`, como FL) con audio sonando; en Linux se captura la pantalla y se comprueba que se ve el plugin | `NovaPitchHostTest <plugin> --show-editor <carpeta>` |
@@ -187,7 +187,7 @@ Leyenda: ✅ cubierto por pruebas automáticas · 🟡 cubierto en parte (se ind
 |---|---|---|---|
 | 96 | Equipo sin herramientas de desarrollo | 🟡 | Runtime estático (`/MT`) e instalación en la CI. Falta una máquina limpia |
 | 97 | FL encuentra el plugin instalado | 🟡 | La CI prueba el plugin desde las carpetas del sistema. Falta el escáner de FL |
-| 98 | Proyecto de una versión anterior | ✅ | «Older state versions are migrated…» |
+| 98 | Proyecto de una versión anterior | ✅ | «Older state versions are migrated…» y `CompatibilityTests`: un proyecto completo guardado con 0.9.0 (`tests/data/state-0.9.0.bin`) se carga con todos sus ajustes; la lista de parámetros no puede cambiar (`tests/data/parameters-0.9.0.txt`) |
 | 99 | Actualizar con FL abierto | 🎧 | Diálogo del instalador con FL en marcha |
 | 100 | Guía instalada | ✅ | La CI comprueba los archivos instalados |
 | 101 | Desinstalar conserva datos | 🟡 | La CI desinstala; los datos de usuario están fuera de las carpetas del instalador |

@@ -113,6 +113,9 @@ Estado por fases (ver especificación original, sección 11).
 - [ ] Pruebas con AddressSanitizer en la CI (hoy se ejecutan en local antes de cada entrega).
 - [ ] Probar los menús emergentes haciendo clic en sus elementos dentro de la ventana del menú (hoy se comprueba que el clic abre el menú y se ejecuta el mismo manejador que el elemento).
 
+### Compatibilidad con proyectos guardados
+- [x] `tests/unit/CompatibilityTests.cpp`: códigos del plugin, lista de parámetros (`tests/data/parameters-0.9.0.txt`) y un proyecto completo de 0.9.0 (`tests/data/state-0.9.0.bin`) congelados. Al publicar la 1.0.0, añadir también su estado de referencia (`state-1.0.0.bin`) y mantener el de 0.9.0.
+
 ### Fase 10
 - [x] `docs/USER_GUIDE_es.md` completa (+ HTML autónomo con imágenes, `tools/docs/build_guide.py`, incluido en los instaladores).
 - [x] Instalador de Windows (Inno Setup 6): VST3/CLAP en `Common Files`, aplicación + guía en `Program Files\NovaPitch`, componentes, desinstalador, cierre de FL si tiene el plugin cargado. En CI: se instala en silencio, se pasa el host test al VST3 instalado y se desinstala.

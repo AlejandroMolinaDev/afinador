@@ -1,0 +1,58 @@
+# Decisions log (full history)
+
+Moved out of `CLAUDE.md` to keep the per-session context small. Append new decisions here; put only rules that every session must know in `CLAUDE.md`.
+
+- Phase 1: submodules instead of CPM (reproducible, offline, recursive CLAP deps).
+- Phase 1: JUCE pinned to 8.0.15 as the spec requires JUCE 8 (JUCE 9.x exists; evaluate migration later, see ROADMAP).
+- Phase 1: clap-juce-extensions pinned to `main` (its tags are from 2022 and too old).
+- Phase 1: MIDI input + `aumf` AU type enabled from day one to avoid breaking FL projects in phase 7.
+- Phase 1: no parameters yet (pure passthrough).
+- Phase 2: parameters `inputProfile` (choice, default Alto/Tenor) and `sensitivity` (0–100 %, default 50), version hint 1.
+- Phase 2: pitch analysis runs at 20–40 kHz after decimation (the analysis signal is low-passed ≤ 8 kHz anyway): same accuracy, ~2–4× less CPU. Detection is on the mono sum so phase 3 can apply one ratio to both channels.
+- Phase 2: YIN picks the minimum of the whole sub-threshold dip + sub-multiple check (fixes noise ripples and octave-down errors found while testing with noise).
+- Phase 2: VST3 MIDI CC emulation disabled (see FL rules).
+- Phase 2: automated host test instead of manual-only FL checks (FL can't run in CI); manual checklist still in `docs/TESTING_FL.md`.
+- Phase 3: parameters appended (never inserted): qualityMode, key, scale, referenceA4, retuneSpeed, tolerance, naturalHold, transpose, mix, noteState0..11. `qualityMode` already has its 4 items (Live, Tracking, HQ, Vintage) so automation stays stable when HQ/Vintage get their own engines in phase 4.
+- Phase 3: fixed latency per mode (Live 3 ms, Tracking 10 ms) rather than per profile, so FL's PDC only changes when the user changes the mode. Default mode: Tracking.
+- Phase 3: choice parameters parse text robustly (exact, case-insensitive, UTF-8 mis-decoded as Latin-1 by the CLAP wrapper, numeric index) — fixes clap-validator's text round-trip on accented names.
+- Phase 3: input samples are sanitised (NaN/Inf → 0) before the chain, output sanitised too.
+- Phase 4: parameters appended: formantPreserve, formantShift, formantLink, character. MSVC gets `/bigobj` (signalsmith templates).
+- Phase 4: HQ = signalsmith-stretch with a 90 ms block / 10 ms interval (100 ms latency): 45 ms biased the shifted pitch by up to +4 c; 90 ms brings it to ~+1.5 c within the spec's 50–120 ms. Per-mode latency is cached in `prepareToPlay` (HQ latency requires configuring an engine → never on the audio thread).
+- Phase 4: Vintage = PSOLA with formants following pitch, grain scale 0.7, speed 0, no tolerance/hold.
+- Phase 5: parameters appended: vibratoPreserve (default 100 %), vibRate, vibDepth (default 0 = off), vibDelay, vibVariation, vibAmpMod, vibFormantMod. NoteMapper/CorrectionCurve work on the vibrato-free centre; Vintage forces vibratoPreserve = 0.
+- Phase 5: HQ needs control/audio alignment (detector lag vs STFT input latency); PSOLA doesn't (output period = detected period / ratio, same lag).
+- Phase 5: tabbed UI pulled forward from phase 6 to keep the window compact (760×640).
+- Phase 6: presets are "sound" presets (song settings excluded) — loading a preset mid-song never changes the key. User presets in `<Documents>/NovaPitch/Presets`.
+- Phase 6: MIDI Learn values are applied from the message thread (processor timer) via setValueNotifyingHost, never from the audio thread. Mappings live in the project state.
+- Phase 6: test names must be ASCII (CTest on Windows mangles non-ASCII filters); a meta test enforces it.
+- Phase 7: parameters appended: midiTarget, midiScaleLearn, hv{Mode,Degrees,Semitones,Formant,Pan,Level,Humanize,Mute,Solo}{1..4}, hBus{Hpf,Lpf,EqFreq,EqGain,Attack,Release,Gate,Width} (80 parameters in total).
+- Phase 7: learnt MIDI scale is written into scale/noteState parameters from the message thread (visible, automatable, saved) instead of a hidden override.
+- Phase 7: every parameter must round-trip text → value → text (hosts and clap-validator type values); a unit test checks all of them.
+- Phase 8: parameter appended: `graphMode` (81 parameters). It is a song setting: presets never change it.
+- Phase 8: graph objects and the captured curve live in the plugin state (`Graph` child, times in seconds of the host timeline, captured frames 16 bytes at 100 frames/s). Old projects have no `Graph` child: it is created on load, so no state-version bump.
+- Phase 8: host time = play head `timeInSamples / fs` (fallback seconds). Capture and playback share that timebase, so constant offsets cancel; whether FL's PDC shifts it when the latency changes is a manual FL check (ROADMAP).
+- Phase 8: the audio thread reads an immutable compiled track through an atomic pointer; retired tracks are freed on the message thread after 2 completed audio blocks (or in prepare/release). No locks, no allocation.
+- Phase 8: graphical mode = objects only: outside objects or with the transport stopped the original voice passes. Lines/curves are followed exactly (speed 0, vibrato 0); notes use global or per-note speed / vibrato / formant.
+- Phase 8: right click deletes objects (FL piano-roll convention); the editor view follows the `graphMode` parameter, so automation switches it.
+- Phase 8: raw audio capture (waveform, time correction) deferred to phase 9.
+- Phase 9: key detection = f0 pitch-class histogram (monophonic voice) + Krumhansl–Schmuckler; writes key + Major/Natural minor through the parameters (message thread).
+- Phase 9: instance sync is in-process only (per plugin binary); bridged instances are alone and the button says so.
+- Phase 9: captured audio is stored per user (LocalAppData / Application Support / ~/.local/share), not inside the project (FL projects would grow by MBs per minute); the state keeps `audioId` + pass list (`GraphAudio` child). Tests and tools must call `setCaptureRoot` with a temp folder.
+- Phase 9: objects and the captured curve stay in source time; the time map (undoable `Graph@warp`) maps them to output time at compile, so pitch edits follow their syllables.
+- Phase 9: time edits are rendered offline (background thread) and substituted for the input during playback, then processed by the normal chain — no second real-time engine, no extra latency.
+- Phase 9: ARA2 postponed until after phase 10 (user decision, 2026-11-23).
+- Phase 10: version 0.9.0 = feature-complete beta; 1.0.0 after the user's FL tests.
+- Phase 10: installers put plugins in the system folders FL scans (`Common Files\{VST3,CLAP}`, `/Library/Audio/Plug-Ins/*`); macOS components are non-relocatable (all formats share one bundle id); user data (presets, captures) is never removed on uninstall.
+- Phase 10: the user guide is Markdown (`docs/USER_GUIDE_es.md`) converted to one self-contained HTML (images embedded) shipped with the installers.
+- Feature audit (0.9.x, `docs/AUDITORIA_FUNCIONES.md`): parameters appended `midiOut`, `midiTargetExact`, `vibShape` (84 parameters); `midiOut` is a song setting (presets never change it). The plugin declares MIDI output; `processBlock` clears the MIDI buffer after reading it (no MIDI thru) and writes only its own notes.
+- Feature audit: PSOLA synthesis spacing follows the measured epoch spacing when it differs from the detector period by > 6 % (note transitions), so hard-tune note changes are immediate; regression test `TransitionTests`.
+- Feature audit: 12-note state keyboard as a 7th tab "Notas" (second position); page indices shifted, the `Page` enum is the reference.
+- Feature audit: parameters appended `noteDetune0..11` (±50 c per pitch class; 96 parameters). They are song settings (presets and A/B never change them) and travel with Sincronizar. NoteMapper decides and targets detuned positions; harmony voices use their own note's detune.
+- Feature audit: A/B comparison in `PresetManager` (state child `ABCompare`, sound parameters only); "*" modified marker vs the current preset. The header host badge moved to the footer to make room for A/B.
+- UI tests: every pop-up menu is built by a `create*Menu()` and handled by a `*MenuItemChosen()` (tests run exactly the click's code); async menu / dialog callbacks hold a `SafePointer` (the host may close the window with a menu or dialog open). JUCE menus don't inherit the target's LookAndFeel: every menu calls `setLookAndFeel`. Controls carry component IDs (parameter ID for knobs / combos / switches).
+- UI tests harness rules (learnt from CI on Windows / macOS): test windows have no native frame (like a plugin view embedded in a host; a titled window gets OS size limits and screen clamping); everything a UI timer updates is checked with `waitFor`, never after a fixed `pump`; tests that click with the real mouse path size the window with `Harness::fitWidth` (CI screens can be 1024 × 768); `Bot` drags follow a path fixed in window coordinates (the component may move, e.g. the resize corner) and hide tooltips first, as a moving mouse does.
+- UI tests: no text may be squashed (`kMinTextScale = 1`). Dense toolbars size their buttons with `widthToFitText` (fonts differ between Windows, macOS and Linux) and may use the compact 14 px font (`setCompact`). A knob's MIDI mapping shows as a "CCn" badge, not in the caption.
+- Graphical mode: frames before the timeline start (detector look-back) are not captured; imports never create objects before 0; the time tool keeps the start of a note that has no room before it and stretches from its end.
+- Phase 10: the plugin keeps `EDITOR_WANTS_KEYBOARD_FOCUS FALSE` so it never steals FL's shortcuts (space = play); the graph editor's shortcuts work when it has focus and every action also has a button.
+- Context: `CLAUDE.md` keeps only what every session needs (status, frozen ids, rules, build & test, architecture map); the full decisions history lives here.
+- Compatibility guard: reference files in `tests/data/` (parameter list and a full project state written by 0.9.0) are never edited to make a test pass; incompatibilities are fixed in code or with a migration. Regenerate only on purpose with `NOVAPITCH_WRITE_GOLDEN=1`.

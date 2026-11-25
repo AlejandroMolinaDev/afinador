@@ -19,11 +19,14 @@ add_executable(NovaPitchTests
     unit/AuditTests.cpp
     unit/FootprintTests.cpp
     unit/DetuneAbTests.cpp
+    unit/CompatibilityTests.cpp
     unit/TestHelpers.h
     signals/SignalGenerators.h
 )
 
 target_compile_definitions(NovaPitchTests PRIVATE
+    NOVAPITCH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
+    NOVAPITCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1
     JUCE_STANDALONE_APPLICATION=0
     JUCE_MODAL_LOOPS_PERMITTED=0
