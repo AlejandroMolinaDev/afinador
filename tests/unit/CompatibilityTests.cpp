@@ -126,7 +126,7 @@ TEST_CASE ("Parameter list matches 0.9.0: same IDs, order and ranges; new ones o
     const auto current = currentParameters (p);
     const auto file = dataDir().getChildFile ("parameters-0.9.0.txt");
     if (writeGolden())
-        REQUIRE (file.replaceWithText (current.joinIntoString ("\n") + "\n"));
+        REQUIRE (file.replaceWithText (current.joinIntoString ("\n") + "\n", false, false, "\n"));
 
     juce::StringArray reference;
     reference.addLines (file.loadFileAsString());

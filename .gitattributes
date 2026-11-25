@@ -3,3 +3,4 @@
 *.bat text eol=crlf
 *.png binary
 *.wav binary
+tests/data/*.bin binary
