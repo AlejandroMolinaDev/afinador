@@ -266,7 +266,7 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
         items.add (box.getItemText (i));
     CHECK (items.contains (u8 ("Pop moderno")));
     CHECK (items.contains (u8 ("Hard tune")));
-    CHECK (box.getText() == u8 ("Por defecto"));
+    CHECK (waitFor ([&] { return box.getText() == u8 ("Por defecto"); }));
 
     // Choose one in the list.
     box.setSelectedItemIndex (items.indexOf (u8 ("Hard tune")), juce::sendNotificationSync);
@@ -274,15 +274,21 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
     CHECK (pm.getCurrentPresetName() == u8 ("Hard tune"));
     CHECK (h.param (ParamIDs::retuneSpeed) == Approx (0.0f));
 
-    // Next / previous wrap around the list.
+    // Next / previous wrap around the list. The preset loads at once; the box
+    // text follows at the next UI tick (editor timer).
+    auto shows = [&] (const juce::String& name) {
+        INFO ("expected preset " << name << ", loaded " << pm.getCurrentPresetName() << ", box " << box.getText());
+        CHECK (pm.getCurrentPresetName() == name);
+        CHECK (waitFor ([&] { return box.getText() == name; }));
+    };
     bot.click (h.get<juce::Button> ("presetNext"));
-    CHECK (box.getText() == items[items.indexOf (u8 ("Hard tune")) + 1]);
+    shows (items[items.indexOf (u8 ("Hard tune")) + 1]);
     bot.click (h.get<juce::Button> ("presetPrev"));
     bot.click (h.get<juce::Button> ("presetPrev"));
-    CHECK (box.getText() == items[items.indexOf (u8 ("Hard tune")) - 1]);
+    shows (items[items.indexOf (u8 ("Hard tune")) - 1]);
     for (int i = 0; i < items.size(); ++i)
         bot.click (h.get<juce::Button> ("presetNext"));
-    CHECK (box.getText() == items[items.indexOf (u8 ("Hard tune")) - 1]);
+    shows (items[items.indexOf (u8 ("Hard tune")) - 1]);
 
     // A sound edit marks it "*", a song edit doesn't; choosing it again reverts.
     const auto current = box.getText();
@@ -306,7 +312,7 @@ TEST_CASE ("Presets: choose, previous / next, modified marker, save in the dialo
     bot.click (dialogButton (*dialog, u8 ("Guardar")));
     CHECK (waitFor ([&] { return UiTestAccess::saveDialog (h.ed()) == nullptr; }));
     CHECK (pm.getUserFolder().getChildFile (u8 ("Mi voz ñ") + PresetManager::kFileExtension).existsAsFile());
-    CHECK (box.getText() == u8 ("Mi voz ñ"));
+    CHECK (waitFor ([&] { return box.getText() == u8 ("Mi voz ñ"); }));
     juce::StringArray after;
     for (int i = 0; i < box.getNumItems(); ++i)
         after.add (box.getItemText (i));
